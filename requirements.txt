@@ -1,0 +1,7 @@
+langchain>=0.0.320
+langchain-anthropic>=0.1.1
+langgraph>=0.0.26
+langchain-core>=0.1.12
+anthropic>=0.8.1
+typing-extensions>=4.5.0
+python-dotenv>=1.0.0 
