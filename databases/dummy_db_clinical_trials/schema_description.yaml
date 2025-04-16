@@ -1,0 +1,153 @@
+schema:
+  tables:
+    patients:
+      description: Stores patient demographic and diagnostic information
+      columns:
+        - name: patient_id
+          type: uuid
+          description: Unique identifier for each patient
+          constraints: primary key
+        - name: first_name
+          type: varchar(50)
+          description: Patient's first name
+          constraints: not null
+        - name: last_name
+          type: varchar(50)
+          description: Patient's last name
+          constraints: not null
+        - name: dob
+          type: date
+          description: Patient's date of birth
+          constraints: not null
+        - name: gender
+          type: varchar(10)
+          description: Patient's gender
+          constraints: not null
+        - name: ethnicity
+          type: varchar(50)
+          description: Patient's ethnicity
+          constraints: null
+        - name: diagnosis
+          type: text
+          description: Patient's medical diagnosis
+          constraints: null
+        - name: created_at
+          type: timestamp
+          description: Record creation timestamp
+          constraints: default current_timestamp
+
+    sequencing_data:
+      description: Contains genetic sequencing information for patients
+      columns:
+        - name: seq_id
+          type: uuid
+          description: Unique identifier for sequencing data
+          constraints: primary key
+        - name: patient_id
+          type: uuid
+          description: Reference to patient
+          constraints: foreign key references patients(patient_id)
+        - name: sample_id
+          type: varchar(50)
+          description: Identifier for biological sample
+          constraints: not null
+        - name: sequencing_tech
+          type: varchar(50)
+          description: Type of sequencing technology used
+          constraints: not null
+        - name: mutation
+          type: text
+          description: Detected genetic mutation
+          constraints: null
+        - name: mutation_effect
+          type: text
+          description: Clinical significance of mutation
+          constraints: null
+        - name: date_performed
+          type: date
+          description: Date when sequencing was performed
+          constraints: not null
+
+    clinical_trials:
+      description: Information about clinical trials
+      columns:
+        - name: trial_id
+          type: uuid
+          description: Unique identifier for clinical trial
+          constraints: primary key
+        - name: trial_name
+          type: varchar(100)
+          description: Name of the clinical trial
+          constraints: not null
+        - name: start_date
+          type: date
+          description: Trial start date
+          constraints: not null
+        - name: end_date
+          type: date
+          description: Trial end date
+          constraints: null
+        - name: phase
+          type: varchar(10)
+          description: Clinical trial phase
+          constraints: not null
+        - name: condition
+          type: varchar(100)
+          description: Medical condition being studied
+          constraints: not null
+        - name: status
+          type: varchar(50)
+          description: Current status of the trial
+          constraints: not null
+        - name: principal_investigator
+          type: varchar(100)
+          description: Lead researcher for the trial
+          constraints: not null
+
+    drugs:
+      description: Database of therapeutic drugs
+      columns:
+        - name: drug_id
+          type: uuid
+          description: Unique identifier for drug
+          constraints: primary key
+        - name: drug_name
+          type: varchar(100)
+          description: Name of the drug
+          constraints: not null
+        - name: mechanism_of_action
+          type: text
+          description: How the drug works
+          constraints: null
+        - name: target
+          type: varchar(100)
+          description: Molecular target of the drug
+          constraints: not null
+        - name: approval_status
+          type: varchar(50)
+          description: Current approval status
+          constraints: not null
+        - name: manufacturer
+          type: varchar(100)
+          description: Drug manufacturer
+          constraints: not null
+
+    trial_enrollment:
+      description: Tracks patient enrollment in clinical trials
+      columns:
+        - name: enrollment_id
+          type: uuid
+          description: Unique identifier for enrollment
+          constraints: primary key
+        - name: patient_id
+          type: uuid
+          description: Reference to patient
+          constraints: foreign key references patients(patient_id)
+        - name: trial_id
+          type: uuid
+          description: Reference to clinical trial
+          constraints: foreign key references clinical_trials(trial_id)
+        - name: enrollment_date
+          type: date
+          description: Date of enrollment
+          constraints: not null
