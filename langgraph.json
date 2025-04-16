@@ -1,0 +1,11 @@
+{
+  "python_version": "3.13",
+  "dockerfile_lines": [],
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "my_agent": "./src/demos/mcp_langgraph/simple_graph_client.py:make_graph"
+  },
+  "env": ".env"
+}
