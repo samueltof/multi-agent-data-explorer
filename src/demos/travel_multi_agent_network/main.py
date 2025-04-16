@@ -186,26 +186,28 @@ def pretty_print_messages(chunk):
         print(content)
         print(f"{'='*50}")
 
+api_key = get_api_key()
+graph = create_multi_agent_graph(api_key)
 
-if __name__ == "__main__":
-    # Get API key and create the multi-agent graph
-    api_key = get_api_key()
-    graph = create_multi_agent_graph(api_key)
+# if __name__ == "__main__":
+#     # Get API key and create the multi-agent graph
+#     api_key = get_api_key()
+#     graph = create_multi_agent_graph(api_key)
     
-    # Example user query
-    user_query = "I want to go somewhere warm in the Caribbean. Pick one destination and give me hotel recommendations."
+#     # Example user query
+#     user_query = "I want to go somewhere warm in the Caribbean. Pick one destination and give me hotel recommendations."
     
-    print("\n\nStarting multi-agent conversation (Streaming Mode)...\n")
-    print(f"User query: {user_query}\n")
+#     print("\n\nStarting multi-agent conversation (Streaming Mode)...\n")
+#     print(f"User query: {user_query}\n")
     
-    # Use stream to see the step-by-step execution
-    # The input format for stream/invoke can be a dictionary or a list of tuples/messages
-    # Using the list format here for variety
-    inputs = {"messages": [( "user", user_query)]}
+#     # Use stream to see the step-by-step execution
+#     # The input format for stream/invoke can be a dictionary or a list of tuples/messages
+#     # Using the list format here for variety
+#     inputs = {"messages": [( "user", user_query)]}
     
-    for chunk in graph.stream(inputs, stream_mode="values"):
-        # Print the content of the chunk (agent output)
-        # We use pretty_print_messages to format it nicely
-        pretty_print_messages(chunk)
+#     for chunk in graph.stream(inputs, stream_mode="values"):
+#         # Print the content of the chunk (agent output)
+#         # We use pretty_print_messages to format it nicely
+#         pretty_print_messages(chunk)
     
-    print("\n\nConversation completed!") 
+#     print("\n\nConversation completed!") 
