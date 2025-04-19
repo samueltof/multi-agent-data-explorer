@@ -15,6 +15,8 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 # Remove directory creation logic, moved into get_db_manager
 # SQLITE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+# Cache for the DatabaseManager instance
+_db_manager_instance = None
 
 def get_llm(): # Remove type hint that requires early import
     """Initializes and returns the LLM instance (OpenAI)."""
@@ -27,7 +29,16 @@ def get_llm(): # Remove type hint that requires early import
         raise
 
 def get_db_manager(): # Remove type hint that requires early import
-    """Initializes and returns the DatabaseManager instance based on environment settings."""
+    """Initializes and returns the DatabaseManager instance based on environment settings.
+    Caches the instance to avoid multiple initializations and connections.
+    """
+    global _db_manager_instance
+    
+    if _db_manager_instance is not None:
+        logger.debug("Returning cached DatabaseManager instance.")
+        return _db_manager_instance
+        
+    logger.info("Creating new DatabaseManager instance.")
     from src.services.database.database_manager import DatabaseManager # Import inside function
     try:
         # Load settings from environment variables via pydantic
@@ -52,7 +63,8 @@ def get_db_manager(): # Remove type hint that requires early import
             db_path.parent.mkdir(parents=True, exist_ok=True)
             logger.info(f"Ensuring SQLite DB directory exists at: {db_path.parent}")
 
-        return DatabaseManager(settings=settings)
+        _db_manager_instance = DatabaseManager(settings=settings)
+        return _db_manager_instance
     except Exception as e:
         logger.error(f"Error initializing DatabaseManager from settings: {e}")
         raise 

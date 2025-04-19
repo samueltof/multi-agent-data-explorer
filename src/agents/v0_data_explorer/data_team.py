@@ -209,14 +209,17 @@ def format_final_response_node(state: AgentState) -> AgentState:
     logger.info("DATA_TEAM: Formatting final response...")
     error_message = state.get("error_message")
     execution_result = state.get("execution_result")
+    query = state.get("natural_language_query", "the user's query") # Get original query for context
 
     if error_message:
-        final_message_content = f"Data team encountered an error: {error_message}"
+        # Keep error messages direct
+        final_message_content = f"I encountered an error trying to answer '{query}': {error_message}"
     elif execution_result:
-        final_message_content = f"Data team executed the query. Result:\n{execution_result}"
+        # Make success message more conversational and include the result directly
+        final_message_content = f"Okay, I looked into '{query}'. Here's the result:\n\n{execution_result}"
     else:
         # Should not happen in normal flow if validation passes
-        final_message_content = "Data team finished, but no execution result was found or an error occurred before execution."
+        final_message_content = f"I finished processing '{query}', but no execution result was found or an error occurred before execution."
 
     # Append the final message to the main message list for the supervisor
     final_message = AIMessage(content=final_message_content, name="data_team_final_response")

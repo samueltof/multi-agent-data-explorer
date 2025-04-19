@@ -2,6 +2,7 @@ from langchain_core.tools import tool
 from langchain_community.tools.tavily_search import TavilySearchResults
 from src.services.database.database_manager import DatabaseManager
 from .config import get_db_manager
+from src.config.database_config import DatabaseType
 import pandas as pd
 import os
 
@@ -45,7 +46,7 @@ def get_database_schema() -> str:
         # Attempt to load schema, requires database_schema_path to be set
         # For SQLite, we might need a different approach if schema file isn't used
         # Let's get table names and schemas directly for SQLite
-        if db_manager.settings.database_type == 'sqlite':
+        if db_manager.settings.database_type == DatabaseType.SQLITE:
             cursor = db_manager.conn.conn.cursor() # Access underlying connection
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
             tables = cursor.fetchall()
