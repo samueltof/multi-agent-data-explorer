@@ -3,9 +3,9 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from langchain_core.output_parsers.json import JsonOutputParser
 from typing import List, Dict, Any, Optional
+from functools import partial
 
 from .state import AgentState
-from .config import get_llm
 from .tools import get_database_schema, execute_sql_query
 from src.config.logger import logger
 
@@ -112,13 +112,15 @@ def fetch_schema_node(state: AgentState) -> AgentState:
         logger.error(f"DATA_TEAM: Error in fetch_schema_node: {e}")
         return {"error_message": f"Failed to fetch database schema: {str(e)}"}
 
-def sql_generator_node(state: AgentState) -> AgentState:
+def sql_generator_node(state: AgentState, llm_client: Any) -> AgentState:
     """Generates SQL based on the schema and user query."""
     logger.info("DATA_TEAM: Generating SQL...")
     if state.get("error_message"):
          return {}
 
-    llm = get_llm().client
+    # Use passed llm_client
+    # llm_service = await get_llm_async()
+    llm = llm_client 
     user_query = state.get("natural_language_query")
     schema = state.get("schema")
     retry_feedback = state.get("validation_feedback", "") # Get feedback from previous validation if any
@@ -155,13 +157,15 @@ def sql_generator_node(state: AgentState) -> AgentState:
         logger.error(f"DATA_TEAM: Error generating SQL: {e}")
         return {"error_message": f"Failed to generate SQL: {str(e)}"}
 
-def sql_validator_node(state: AgentState) -> AgentState:
+def sql_validator_node(state: AgentState, llm_client: Any) -> AgentState:
     """Validates the generated SQL using an LLM."""
     logger.info("DATA_TEAM: Validating SQL...")
     if state.get("error_message") or not state.get("generated_sql"):
         return {}
 
-    llm = get_llm().client
+    # Use passed llm_client
+    # llm_service = await get_llm_async()
+    llm = llm_client 
     parser = JsonOutputParser()
     
     prompt = SQL_VALIDATOR_PROMPT.format(
@@ -256,15 +260,19 @@ def check_for_errors(state: AgentState) -> str:
 
 # --- Graph Definition ---
 
-def create_data_team_graph():
+def create_data_team_graph(llm_client: Any):
     """Creates and compiles the LangGraph StateGraph for the data team."""
     workflow = StateGraph(AgentState)
+
+    # Use partial to bind the llm_client to the node functions
+    generate_sql_with_llm = partial(sql_generator_node, llm_client=llm_client)
+    validate_sql_with_llm = partial(sql_validator_node, llm_client=llm_client)
 
     # Add nodes
     workflow.add_node("prepare_query", prepare_data_query_node) # New entry node
     workflow.add_node("fetch_schema", fetch_schema_node)
-    workflow.add_node("generate_sql", sql_generator_node)
-    workflow.add_node("validate_sql", sql_validator_node)
+    workflow.add_node("generate_sql", generate_sql_with_llm) # Use partial function
+    workflow.add_node("validate_sql", validate_sql_with_llm) # Use partial function
     workflow.add_node("execute_sql", sql_executor_node)
     workflow.add_node("handle_error", handle_error_node)
     workflow.add_node("format_response", format_final_response_node)

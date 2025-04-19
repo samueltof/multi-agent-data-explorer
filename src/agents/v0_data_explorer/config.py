@@ -6,6 +6,8 @@ from pathlib import Path
 # Make imports absolute from src directory
 from src.config.database_config import DatabaseSettings, DatabaseType
 from src.config.logger import logger
+# Import the async settings getter
+from src.config.settings import get_settings_async 
 
 # Determine project root dynamically
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -18,12 +20,15 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 # Cache for the DatabaseManager instance
 _db_manager_instance = None
 
-def get_llm(): # Remove type hint that requires early import
-    """Initializes and returns the LLM instance (OpenAI)."""
+# Rename to async and add async keyword
+async def get_llm_async(): # Remove type hint that requires early import
+    """Asynchronously initializes and returns the LLM instance (OpenAI)."""
     from src.services.llm import LLM # Import inside function
     try:
-        # Explicitly use OpenAI provider as requested
-        return LLM(provider="openai")
+        # Await the async settings getter
+        settings = await get_settings_async()
+        # Pass settings to constructor
+        return LLM(settings=settings, provider="openai")
     except ValueError as e:
         logger.error(f"Error initializing LLM: {e}. Make sure OPENAI_API_KEY is set.")
         raise

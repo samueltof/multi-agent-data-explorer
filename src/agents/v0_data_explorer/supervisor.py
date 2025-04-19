@@ -1,6 +1,6 @@
 from langgraph_supervisor import create_supervisor
 from langgraph.graph.state import CompiledStateGraph
-from .config import get_llm
+from .config import get_llm_async
 from .state import AgentState
 from .web_search_agent import create_web_search_agent
 from .data_team import create_data_team_graph
@@ -20,13 +20,20 @@ Route the user query to the appropriate agent to begin processing. Only route to
 Do not attempt to answer the query yourself.
 """
 
-def create_supervisor_agent() -> CompiledStateGraph:
+# Make function async
+async def create_supervisor_agent() -> CompiledStateGraph:
     """Creates and compiles the main supervisor agent."""
     logger.info("Creating supervisor agent...")
     
-    # Initialize the agents/teams
-    web_agent = create_web_search_agent()
-    data_team = create_data_team_graph()
+    # --- Fetch LLM client first --- 
+    llm_service = await get_llm_async()
+    llm = llm_service.client
+    # -----------------------------
+
+    # Initialize the agents/teams (await the async creators)
+    web_agent = await create_web_search_agent()
+    # Pass llm client to data team graph creator
+    data_team = create_data_team_graph(llm_client=llm)
     
     # List of agents the supervisor manages
     # The names must match the 'name' attribute of the compiled graphs/agents
@@ -35,7 +42,9 @@ def create_supervisor_agent() -> CompiledStateGraph:
     # Ensure AgentState is used
     options = AgentState
     
-    llm = get_llm().client
+    # LLM was fetched above
+    # llm_service = await get_llm_async()
+    # llm = llm_service.client
     
     # Create the supervisor workflow
     # Note: The agents list expects compiled graphs/executors

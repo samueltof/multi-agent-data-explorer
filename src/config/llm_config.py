@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 
 # Explicitly load .env before defining classes that use os.getenv
-load_dotenv()
+# load_dotenv() # Removed redundant call, handled in settings.py
 
 class LLMProviderSettings(BaseSettings):
     """Base settings for LLM providers."""
@@ -45,10 +45,8 @@ class AzureSettings(LLMProviderSettings):
     api_version: str = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
     azure_endpoint: Optional[str] = os.getenv("AZURE_OPENAI_ENDPOINT")
     default_model: str = "gpt-4"
-    # Update embedding model name to match Azure deployment naming convention
-    embedding_model: str = "text-embedding-ada-002"  # Changed from text-embedding-3-small
+    embedding_model: str = "text-embedding-ada-002"
     
-    # Add fallback options
     embedding_model_fallbacks: list = ["text-embedding-ada-002", "text-embedding-3-small"]
     
     class Config:
@@ -64,7 +62,6 @@ class PortkeyBedrockSettings(LLMProviderSettings):
     default_model: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
     embedding_model: str = "amazon.titan-embed-text-v1"
     
-    # Portkey specific settings
     trace_id: Optional[str] = None
     cache_enabled: bool = True
     retry_enabled: bool = True
@@ -81,7 +78,6 @@ class PortkeyAzureSettings(LLMProviderSettings):
     default_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-ada-002"
     
-    # Portkey specific settings
     trace_id: Optional[str] = None
     cache_enabled: bool = True
     retry_enabled: bool = True
@@ -91,13 +87,16 @@ class PortkeyAzureSettings(LLMProviderSettings):
     
 class LLMSettings(BaseSettings):
     """Settings for the LLM agent."""
-    
-    anthropic: AnthropicSettings = AnthropicSettings()
-    openai: OpenAISettings = OpenAISettings()
-    bedrock: BedrockSettings = BedrockSettings()
-    azure: AzureSettings = AzureSettings()
-    portkey_bedrock: PortkeyBedrockSettings = PortkeyBedrockSettings()
-    portkey_azure: PortkeyAzureSettings = PortkeyAzureSettings()
+    # Use default_factory to delay instantiation until LLMSettings is created
+    anthropic: AnthropicSettings = Field(default_factory=AnthropicSettings)
+    openai: OpenAISettings = Field(default_factory=OpenAISettings)
+    bedrock: BedrockSettings = Field(default_factory=BedrockSettings)
+    azure: AzureSettings = Field(default_factory=AzureSettings)
+    portkey_bedrock: PortkeyBedrockSettings = Field(default_factory=PortkeyBedrockSettings)
+    portkey_azure: PortkeyAzureSettings = Field(default_factory=PortkeyAzureSettings)
     
     class Config:
         validate_assignment = True
+        # Prevent pydantic-settings from automatically loading .env
+        env_file = None 
+        extra = 'ignore'

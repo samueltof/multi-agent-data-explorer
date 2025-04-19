@@ -1,5 +1,5 @@
 from langchain_core.prompts import PromptTemplate
-from src.config.settings import get_settings, Settings
+from src.config.settings import Settings
 from pydantic import ValidationError
 import os
 from typing import Any, Optional
@@ -7,15 +7,9 @@ import time
 import logging
 from langchain_anthropic import ChatAnthropic
 
-_settings = get_settings()
-
 class LLM:
-    def __init__(self, provider: Optional[str] = None, model: Optional[str] = None):
-        try:
-            self.settings = get_settings()
-        except ValidationError:
-            # Fallback to empty settings if validation fails
-            self.settings = Settings()
+    def __init__(self, settings: Settings, provider: Optional[str] = None, model: Optional[str] = None):
+        self.settings = settings
         
         self.available_providers = self._get_available_providers()
         self.provider = provider or self._determine_default_provider()

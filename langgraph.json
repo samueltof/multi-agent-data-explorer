@@ -5,7 +5,7 @@
     "."
   ],
   "graphs": {
-    "my_agent": "./src/demos/mcp_langgraph/simple_graph_client.py:make_graph"
+    "v0_data_explorer": "src.agents.v0_data_explorer.supervisor:create_supervisor_agent"
   },
   "env": ".env"
 }

@@ -5,6 +5,7 @@ from pprint import pprint
 from dotenv import load_dotenv
 import argparse
 from operator import add
+import asyncio # Import asyncio
 
 # Ensure the src directory is in the Python path
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -21,13 +22,14 @@ load_dotenv()
 # Combine the tool lists
 all_tools = data_tools + web_tools
 
-def run_agent(query: str):
+# Make the function async
+async def run_agent(query: str):
     """Runs the supervisor agent with the given query."""
     logger.info(f"Starting agent execution with query: '{query}'")
     
     try:
-        # Create the supervisor agent application
-        app = create_supervisor_agent()
+        # Create the supervisor agent application (await the async function)
+        app = await create_supervisor_agent()
         
         # Format the input for the LangGraph application
         inputs = {"messages": [HumanMessage(content=query)]}
@@ -69,7 +71,8 @@ def main():
         user_query = example_query
         logger.info(f"No query provided, using default: '{user_query}'")
 
-    run_agent(user_query)
+    # Use asyncio.run to execute the async function
+    asyncio.run(run_agent(user_query))
 
 if __name__ == "__main__":
     main() 
