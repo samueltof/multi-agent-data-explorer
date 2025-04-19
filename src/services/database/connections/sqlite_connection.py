@@ -15,7 +15,10 @@ class SQLiteConnection(DatabaseConnection):
 
     def _resolve_db_path(self) -> str:
         # Get project root from current file location
-        project_root = Path(__file__).parent.parent.parent.parent
+        # Go up 5 levels from src/services/database/connections/sqlite_connection.py
+        project_root = Path(__file__).parent.parent.parent.parent.parent
+        
+        db_path_str = "<path not specified or found>"
 
         if self.settings.sqlite_path:
             # Handle both absolute and relative paths
@@ -28,8 +31,11 @@ class SQLiteConnection(DatabaseConnection):
             logger.info(f"Attempting database path: {db_path}")
             if db_path.exists():
                 return str(db_path)
+            else:
+                # Keep track of the path tried for the error message
+                db_path_str = str(db_path)
 
-        raise FileNotFoundError(f"SQLite database not found at: {db_path}")
+        raise FileNotFoundError(f"SQLite database not specified or not found at the checked path: {db_path_str}")
 
     def connect(self):
         if self.conn is not None:
