@@ -1,6 +1,12 @@
-from typing import List, Optional
+from langchain_aws import BedrockEmbeddings
+from pydantic import ValidationError
+from src.config.settings import get_settings
+import os
+from typing import Any, Optional
+import time
+import logging
+from typing import List
 from langchain_core.embeddings import Embeddings
-from config.settings import get_settings
 
 class PortkeyBedrockEmbeddings(Embeddings):
     """Implementation of Bedrock embeddings through Portkey gateway."""

@@ -1,8 +1,8 @@
 import pandas as pd
 from typing import List, Any, Tuple
-from config.logger import logger
-from config.database_config import DatabaseSettings
-from services.database.database_connection import DatabaseConnection
+from src.config.logger import logger
+from src.config.database_config import DatabaseSettings
+from src.services.database.database_connection import DatabaseConnection
 # Import pyodbc at the module level for easier testing
 import pyodbc
 

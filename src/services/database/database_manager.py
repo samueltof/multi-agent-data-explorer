@@ -3,14 +3,14 @@ import pandas as pd
 from dotenv import load_dotenv
 from pathlib import Path
 from typing import List, Any, Tuple
-from config.logger import logger
-from config.database_config import DatabaseSettings, DatabaseType
-from services.database.database_connection import DatabaseConnection
-from services.database.connections.athena_connection import AthenaConnection
-from services.database.connections.postgres_connection import PostgresConnection
-from services.database.connections.mysql_connection import MySQLConnection
-from services.database.connections.sqlite_connection import SQLiteConnection
-from services.database.connections.mssql_connection import MSSQLConnection
+from src.config.logger import logger
+from src.config.database_config import DatabaseSettings, DatabaseType
+from src.services.database.database_connection import DatabaseConnection
+from src.services.database.connections.athena_connection import AthenaConnection
+from src.services.database.connections.postgres_connection import PostgresConnection
+from src.services.database.connections.mysql_connection import MySQLConnection
+from src.services.database.connections.sqlite_connection import SQLiteConnection
+from src.services.database.connections.mssql_connection import MSSQLConnection
 
 load_dotenv()
 

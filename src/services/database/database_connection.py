@@ -1,7 +1,7 @@
 import pandas as pd
 from abc import ABC, abstractmethod
 from typing import List, Any, Tuple
-from config.logger import logger
+from src.config.logger import logger
 
 class DatabaseConnection(ABC):
     @abstractmethod

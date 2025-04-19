@@ -1,9 +1,9 @@
 import pandas as pd
 from typing import List, Any, Tuple
 from pathlib import Path
-from config.logger import logger
-from config.database_config import DatabaseSettings
-from services.database.database_connection import DatabaseConnection
+from src.config.logger import logger
+from src.config.database_config import DatabaseSettings
+from src.services.database.database_connection import DatabaseConnection
 
 
 class SQLiteConnection(DatabaseConnection):

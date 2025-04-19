@@ -1,11 +1,12 @@
-from services.database.connections import (
+from .connections import (
     AthenaConnection,
     PostgresConnection,
     MySQLConnection,
     SQLiteConnection,
+    MSSQLConnection,
 )
-from services.database.database_connection import DatabaseConnection
-from services.database.database_manager import DatabaseManager
+from .database_connection import DatabaseConnection
+from .database_manager import DatabaseManager
 
 __all__ = [
     'DatabaseConnection',
