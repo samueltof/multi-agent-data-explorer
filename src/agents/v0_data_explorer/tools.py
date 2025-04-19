@@ -43,33 +43,37 @@ def get_database_schema() -> str:
     """
     try:
         db_manager: DatabaseManager = get_db_manager()
-        # Attempt to load schema, requires database_schema_path to be set
-        # For SQLite, we might need a different approach if schema file isn't used
-        # Let's get table names and schemas directly for SQLite
+        
         if db_manager.settings.database_type == DatabaseType.SQLITE:
-            cursor = db_manager.conn.conn.cursor() # Access underlying connection
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-            tables = cursor.fetchall()
-            schema_desc = "Available tables and their schemas:\n\n"
-            for table in tables:
-                table_name = table[0]
-                schema_desc += f"Table: {table_name}\n"
-                cursor.execute(f"PRAGMA table_info({table_name});")
-                columns = cursor.fetchall()
-                for col in columns:
-                    # col format: (cid, name, type, notnull, dflt_value, pk)
-                    schema_desc += f"- {col[1]} ({col[2]}){' PRIMARY KEY' if col[5] else ''}{' NOT NULL' if col[3] else ''}\n"
-                schema_desc += "\n"
-            return schema_desc
+            # Use the manager's execute_query method which handles thread-local connections
+            try:
+                # Get table names
+                table_cols, table_rows = db_manager.execute_query("SELECT name FROM sqlite_master WHERE type='table';")
+                
+                schema_desc = "Available tables and their schemas:\n\n"
+                for row in table_rows:
+                    table_name = row[0]
+                    schema_desc += f"Table: {table_name}\n"
+                    
+                    # Get column info for the current table
+                    col_info_cols, col_info_rows = db_manager.execute_query(f"PRAGMA table_info({table_name});")
+                    
+                    for col_row in col_info_rows:
+                        # col_row format: (cid, name, type, notnull, dflt_value, pk)
+                        schema_desc += f"- {col_row[1]} ({col_row[2]}){' PRIMARY KEY' if col_row[5] else ''}{' NOT NULL' if col_row[3] else ''}\n"
+                    schema_desc += "\n"
+                return schema_desc
+            except Exception as query_e:
+                 return f"Error querying SQLite schema: {str(query_e)}"
         else:
              # Fallback to the method using YAML file if configured
-             # Check if schema path is configured before calling
              if db_manager.settings.database_schema_path:
                  return db_manager.load_schema_description()
              else:
                  return "Database schema description file not configured."
 
     except Exception as e:
+        # Catch errors during manager initialization or other issues
         return f"Error fetching database schema: {str(e)}"
 
 
