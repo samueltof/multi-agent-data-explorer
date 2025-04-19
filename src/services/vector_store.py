@@ -6,14 +6,15 @@ import json
 import csv
 from langchain.docstore.document import Document
 from langchain_community.vectorstores import FAISS
-
-import pandas as pd
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from config.settings import get_settings
+from enum import Enum
+from pydantic import BaseModel, Field, validator, Extra
+from src.config.settings import get_settings
 from openai import OpenAI
 from timescale_vector import client
 from utils.timer import timer
+import pandas as pd
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 """
 Vector Store Management Module

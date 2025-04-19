@@ -1,10 +1,13 @@
 from langchain_core.prompts import PromptTemplate
-from config.settings import get_settings, Settings
+from src.config.settings import get_settings, Settings
 from pydantic import ValidationError
 import os
 from typing import Any, Optional
 import time
 import logging
+from langchain_anthropic import ChatAnthropic
+
+_settings = get_settings()
 
 class LLM:
     def __init__(self, provider: Optional[str] = None, model: Optional[str] = None):
@@ -48,7 +51,6 @@ class LLM:
     def _initialize_provider(self, provider: str) -> Any:
         """Initialize only the specified provider"""
         if provider == "anthropic":
-            from langchain_anthropic import ChatAnthropic
             return ChatAnthropic(
                 model=self.model or self.settings.llm.anthropic.defaul_model,
                 temperature=self.settings.llm.anthropic.temperature,

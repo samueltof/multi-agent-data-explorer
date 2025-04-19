@@ -1,4 +1,5 @@
-from config.settings import get_settings, Settings
+from src.config.settings import get_settings, Settings
+from src.services.embeddings import BaseEmbeddingsService, OllamaEmbeddingsService, PortkeyBedrockEmbeddingsService
 from pydantic import ValidationError
 import os
 from typing import Any, Optional
@@ -120,3 +121,9 @@ class Embeddings:
     def model_name(self):
         """Get the model name that was used for initialization."""
         return self._model_name
+
+_settings = get_settings()
+
+def get_embeddings_service() -> BaseEmbeddingsService:
+    # Implementation of get_embeddings_service function
+    pass

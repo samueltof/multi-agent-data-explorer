@@ -7,7 +7,12 @@ import os
 from pathlib import Path
 import pandas as pd
 from langchain_core.embeddings import Embeddings
-from config.settings import get_settings  # Change relative import to absolute
+from src.config.settings import get_settings
+from langchain_community.vectorstores.pgvector import PGVector
+from langchain_community.vectorstores.redis import Redis
+from langchain_community.vectorstores.chroma import Chroma
+from ..services.embeddings import get_embeddings_service
+from .vector_store import VectorStoreType
 
 # Get settings from centralized configuration
 settings = get_settings()
