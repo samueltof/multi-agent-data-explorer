@@ -1,4 +1,3 @@
-from typing import List
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("Weather")
@@ -9,4 +8,4 @@ async def get_weather(location: str) -> str:
     return "It's always sunny in New York"
 
 if __name__ == "__main__":
-    mcp.run(transport="sse")
+    mcp.run(transport="sse", port=8000)
