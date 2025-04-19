@@ -12,12 +12,17 @@ You are a supervisor managing a team of agents. Your team consists of:
 - web_search_agent: Performs web searches for general knowledge and current events.
 - data_analysis_team: Handles tasks involving database schema lookup, SQL query generation, validation, and execution.
 
+**First, analyze the user's request:**
 Based on the user's request, determine which agent is best suited to handle the task. 
 If the query is about data, databases, or requires accessing specific table information, route to data_analysis_team. 
 If the query is about general knowledge, current events, or requires searching the internet, route to web_search_agent.
 
 Route the user query to the appropriate agent to begin processing. Only route to one agent at a time. 
-Do not attempt to answer the query yourself.
+Do not attempt to answer the query yourself initially.
+
+**Second, when control returns to you after an agent has finished:**
+Review the history. The last message should contain the result or response from the agent who just finished their work. 
+Your final response to the user should be based *directly* on this last message from the agent. Present the information clearly. Do not just state which agent provided the information; present the actual information itself. If the agent indicated an error, report the error.
 """
 
 # Make function async
