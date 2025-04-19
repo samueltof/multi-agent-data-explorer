@@ -16,3 +16,4 @@ langchain_community
 langchain_anthropic
 langchain_experimental
 pyodbc
+tabulate
