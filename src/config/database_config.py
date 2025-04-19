@@ -25,14 +25,14 @@ class DatabaseSettings(BaseSettings):
     database_schema_path: str | None = os.getenv("DATABASE_SCHEMA_PATH")
     
     # AWS Athena specific
-    s3_staging_dir: str | None = os.getenv("S3_STAGING_DIR")
-    region_name: str | None = os.getenv("AWS_REGION")
+    s3_staging_dir: str | None = os.getenv("S3_STAGING_DIR", None)
+    region_name: str | None = os.getenv("AWS_REGION", None)
     
     # SQL database specific
-    host: str | None = os.getenv("DB_HOST")
-    port: int | None = int(os.getenv("DB_PORT")) if os.getenv("DB_PORT") else None
-    username: str | None = os.getenv("DB_USERNAME") 
-    password: str | None = os.getenv("DB_PASSWORD")
+    host: str | None = os.getenv("DB_HOST", None)
+    port: int | None = int(os.getenv("DB_PORT", None)) if os.getenv("DB_PORT") else None
+    username: str | None = os.getenv("DB_USERNAME", None) 
+    password: str | None = os.getenv("DB_PASSWORD", None)
     local: bool = False
     
     # SQLite specific

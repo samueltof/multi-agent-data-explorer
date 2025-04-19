@@ -1,8 +1,8 @@
 from functools import lru_cache
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
-from config.llm_config import LLMSettings
-from config.database_config import DatabaseSettings
+from .llm_config import LLMSettings
+from .database_config import DatabaseSettings
 
 load_dotenv()
 

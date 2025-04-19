@@ -1,8 +1,10 @@
-from typing import Optional
-from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
+from pydantic import Field, validator, Extra
+from typing import Optional, List
 import os
+from dotenv import load_dotenv
 
+# Explicitly load .env before defining classes that use os.getenv
 load_dotenv()
 
 class LLMProviderSettings(BaseSettings):
@@ -39,9 +41,9 @@ class BedrockSettings(LLMProviderSettings):
 class AzureSettings(LLMProviderSettings):
     """Settings for the Azure OpenAI provider."""
     
-    api_key: str = os.getenv("AZURE_OPENAI_API_KEY")
+    api_key: Optional[str] = os.getenv("AZURE_OPENAI_API_KEY")
     api_version: str = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
-    azure_endpoint: str = os.getenv("AZURE_OPENAI_ENDPOINT")
+    azure_endpoint: Optional[str] = os.getenv("AZURE_OPENAI_ENDPOINT")
     default_model: str = "gpt-4"
     # Update embedding model name to match Azure deployment naming convention
     embedding_model: str = "text-embedding-ada-002"  # Changed from text-embedding-3-small
@@ -56,8 +58,8 @@ class AzureSettings(LLMProviderSettings):
 class PortkeyBedrockSettings(LLMProviderSettings):
     """Settings for the Portkey LLM gateway provider with Bedrock."""
     
-    api_key: str = os.getenv("PORTKEY_BEDROCK_API_KEY")
-    virtual_key: str = os.getenv("PORTKEY_BEDROCK_VIRTUAL_KEY")
+    api_key: Optional[str] = os.getenv("PORTKEY_BEDROCK_API_KEY", None)
+    virtual_key: Optional[str] = os.getenv("PORTKEY_BEDROCK_VIRTUAL_KEY", None)
     base_url: str = os.getenv("PORTKEY_BASE_URL", "https://api.portkey.ai/v1")
     default_model: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
     embedding_model: str = "amazon.titan-embed-text-v1"
@@ -73,8 +75,8 @@ class PortkeyBedrockSettings(LLMProviderSettings):
 class PortkeyAzureSettings(LLMProviderSettings):
     """Settings for the Portkey LLM gateway provider with Azure."""
     
-    api_key: str = os.getenv("PORTKEY_AZURE_API_KEY")
-    virtual_key: str = os.getenv("PORTKEY_AZURE_VIRTUAL_KEY")
+    api_key: Optional[str] = os.getenv("PORTKEY_AZURE_API_KEY", None)
+    virtual_key: Optional[str] = os.getenv("PORTKEY_AZURE_VIRTUAL_KEY", None)
     base_url: str = os.getenv("PORTKEY_BASE_URL", "https://api.portkey.ai/v1")
     default_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-ada-002"
