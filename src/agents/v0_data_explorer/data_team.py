@@ -48,16 +48,21 @@ def prepare_data_query_node(state: AgentState) -> AgentState:
 # --- Prompts ---
 SQL_GENERATOR_PROMPT = PromptTemplate(
     template="""
+You are interacting with a **SQLite** database.
+
 Given the following database schema:
 {schema}
 
 And the user query:
 {query}
 
-Generate a valid SQL query that addresses the user's request. Focus ONLY on generating the SQL.
+Generate a valid **SQLite** SQL query that addresses the user's request. 
+
+- Use `sqlite_master` or `sqlite_schema` for metadata queries if needed.
+- Focus ONLY on generating the SQL.
 {retry_feedback}
 
-Respond ONLY with the SQL query.
+Respond ONLY with the raw SQL query, without any markdown formatting (like ```sql) or explanations.
 SQL Query:""",
     input_variables=["schema", "query", "retry_feedback"]
 )
@@ -65,6 +70,8 @@ SQL Query:""",
 # Using JSON output parser for structured validation feedback
 SQL_VALIDATOR_PROMPT = PromptTemplate(
     template="""
+You are validating a query for a **SQLite** database.
+
 Database Schema:
 {schema}
 
@@ -74,10 +81,10 @@ User Query:
 Generated SQL Query:
 {sql}
 
-Is the generated SQL query valid and does it correctly address the user query based on the provided schema? 
+Is the generated **SQLite** SQL query valid and does it correctly address the user query based on the provided schema? 
 
 Consider:
-- SQL syntax correctness.
+- **SQLite** SQL syntax correctness (e.g., usage of `sqlite_master` is valid for metadata).
 - Table and column existence in the schema.
 - Appropriateness of the query for the user's request.
 
@@ -124,12 +131,26 @@ def sql_generator_node(state: AgentState) -> AgentState:
 
     try:
         response = llm.invoke([HumanMessage(content=prompt)])
-        generated_sql = response.content.strip()
+        raw_sql = response.content.strip()
+        
+        # Clean potential markdown formatting
+        if raw_sql.startswith("```sql"):
+            cleaned_sql = raw_sql[len("```sql"):].strip()
+            if cleaned_sql.endswith("```"):
+                cleaned_sql = cleaned_sql[:-len("```")].strip()
+        elif raw_sql.startswith("```"):
+             cleaned_sql = raw_sql[len("```"):].strip()
+             if cleaned_sql.endswith("```"):
+                 cleaned_sql = cleaned_sql[:-len("```")].strip()
+        else:
+            cleaned_sql = raw_sql
+            
         # Basic check if LLM returned something that looks like SQL
-        if not generated_sql or not any(kw in generated_sql.upper() for kw in ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER"]):
-            raise ValueError("LLM did not return a valid SQL query structure.")
-        logger.info(f"DATA_TEAM: Generated SQL: {generated_sql}")
-        return {"generated_sql": generated_sql, "validation_feedback": None} # Clear old feedback
+        if not cleaned_sql or not any(kw in cleaned_sql.upper() for kw in ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER"]):
+            raise ValueError(f"LLM did not return a valid SQL query structure after cleaning. Original: '{raw_sql}'")
+        
+        logger.info(f"DATA_TEAM: Generated SQL (Cleaned): {cleaned_sql}")
+        return {"generated_sql": cleaned_sql, "validation_feedback": None} # Clear old feedback
     except Exception as e:
         logger.error(f"DATA_TEAM: Error generating SQL: {e}")
         return {"error_message": f"Failed to generate SQL: {str(e)}"}
