@@ -16,13 +16,26 @@ MAX_SQL_RETRIES = 2
 def prepare_data_query_node(state: AgentState) -> AgentState:
     """Extracts the latest user query and resets data team state."""
     logger.info("DATA_TEAM: Preparing query...")
-    last_message = state['messages'][-1]
-    if not isinstance(last_message, HumanMessage):
-        return {"error_message": "Data team expects the last message to be a HumanMessage query."}
     
+    # Find the latest HumanMessage from the history
+    last_human_message = None
+    for msg in reversed(state['messages']):
+        if isinstance(msg, HumanMessage):
+            last_human_message = msg
+            break
+
+    if last_human_message is None:
+        # Handle the case where no HumanMessage is found (shouldn't happen in normal flow)
+        error_msg = "No HumanMessage found in the state history."
+        logger.error(f"DATA_TEAM: {error_msg}")
+        return {"error_message": error_msg}
+
+    # Log the found query
+    logger.info(f"DATA_TEAM: Found user query: '{last_human_message.content}'")
+
     # Reset specific fields for a new run within the data team
     return {
-        "natural_language_query": last_message.content,
+        "natural_language_query": last_human_message.content,
         "schema": None,
         "generated_sql": None,
         "validation_status": None,
