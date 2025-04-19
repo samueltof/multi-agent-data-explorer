@@ -12,3 +12,6 @@ langgraph-supervisor
 pyyaml
 mcp[cli]
 langchain-mcp-adapters
+langchain_community 
+langchain_anthropic
+langchain_experimental
