@@ -1,0 +1,5 @@
+{
+  "agent_tables": {
+    "data_agent_massTRACE": "sql_query_pairs"
+  }
+}
