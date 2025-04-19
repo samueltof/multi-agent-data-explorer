@@ -10,6 +10,14 @@ A travel advisory system using LangGraph's multi-agent architecture. Two coopera
 
 - [Go to Multi-Agent Network Demo](./src/demos/multi_agent_network/)
 
+## Available Agents
+
+### v0 Data Explorer
+
+A multi-agent system designed to answer user queries by either searching the web or interacting with a configured SQLite database using a supervisor-worker pattern.
+
+- [Go to v0 Data Explorer Agent](./src/agents/v0_data_explorer/)
+
 ## Setup
 
 1. Install the required dependencies:
