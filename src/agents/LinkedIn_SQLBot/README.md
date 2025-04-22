@@ -1,8 +1,8 @@
-# Data Explorer Agent (v1)
+# LinkedIn SQL Bot Agent attempt
 
 This agent acts as a multi-agent system designed to answer user queries by either searching the web or interacting with a configured database, inspired by architectures like LinkedIn's SQL Bot.
 
-## Architecture (v1 - LinkedIn-Inspired)
+## Architecture (LinkedIn-Inspired)
 
 The system employs a supervisor-worker pattern built using [LangGraph](https://python.langchain.com/docs/langgraph/):
 
