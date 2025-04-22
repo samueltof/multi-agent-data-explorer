@@ -38,7 +38,7 @@ from sqlalchemy import inspect, text
 
 import logging
 
-from src.agents.v1_data_explorer.state import AgentState # Import AgentState
+from src.agents.LinkedIn_SQLBot.state import AgentState # Import AgentState
 # from langgraph.prebuilt import ToolNode # Correct import for ToolNode
 # from langgraph.graph import START
 
