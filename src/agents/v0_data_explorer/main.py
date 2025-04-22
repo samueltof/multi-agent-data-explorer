@@ -4,7 +4,6 @@ from pathlib import Path
 from pprint import pprint
 from dotenv import load_dotenv
 import argparse
-from operator import add
 import asyncio # Import asyncio
 
 # Ensure the src directory is in the Python path
@@ -61,18 +60,32 @@ def main():
     # Example Usage:
     # Provide a sample query
     # example_query = "What were the total sales for product 'X' in the last quarter?"
-    example_query = "How many tables are in the database?"
+    # example_query = "How many tables are in the database?"
     # example_query = "What is the latest news about large language models?"
     
-    # Or take query from command line arguments
-    if len(sys.argv) > 1:
-        user_query = " ".join(sys.argv[1:])
-    else:
-        user_query = example_query
-        logger.info(f"No query provided, using default: '{user_query}'")
-
-    # Use asyncio.run to execute the async function
-    asyncio.run(run_agent(user_query))
+    print("Starting Data Explorer Agent Chat Interface...")
+    print("Type 'exit' or 'quit' to end the session.")
+    
+    while True:
+        try:
+            user_query = input("You: ")
+            if user_query.lower() in ["exit", "quit"]:
+                print("Exiting...")
+                break
+            if not user_query:
+                continue
+                
+            print("Agent: Processing...") # Indicate that the agent is working
+            # Use asyncio.run to execute the async function for each query
+            asyncio.run(run_agent(user_query))
+            print("-" * 20) # Separator for clarity
+            
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            break
+        except Exception as e:
+            logger.error(f"An error occurred in the chat loop: {e}", exc_info=True)
+            print("An error occurred. Please try again.")
 
 if __name__ == "__main__":
     main() 
