@@ -1,0 +1,11 @@
+langchain
+langgraph
+langchain-openai
+loguru
+python-dotenv
+pandas
+tavily-python
+faiss-cpu
+# Note: sqlite3 is typically built-in with Python.
+# Add other dependencies like database drivers (e.g., psycopg2-binary for PostgreSQL)
+# or vector stores (e.g., faiss-cpu) if you implement those features. 

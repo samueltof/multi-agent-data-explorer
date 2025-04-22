@@ -184,3 +184,6 @@ data/
 
 # Trials
 trials/
+
+# Demo legacy
+demos/legacy_data_explorer_local/
