@@ -34,6 +34,48 @@ def execute_sql_query(query: str) -> str:
         return f"Error executing SQL query: {str(e)}"
 
 # Tool for fetching database schema description
+# @tool
+# def get_database_schema() -> str:
+#     """Returns the schema description of the database.
+    
+#     Returns:
+#         A string containing the database schema description.
+#     """
+#     try:
+#         db_manager: DatabaseManager = get_db_manager()
+        
+#         if db_manager.settings.database_type == DatabaseType.SQLITE:
+#             # Use the manager's execute_query method which handles thread-local connections
+#             try:
+#                 # Get table names
+#                 table_cols, table_rows = db_manager.execute_query("SELECT name FROM sqlite_master WHERE type='table';")
+                
+#                 schema_desc = "Available tables and their schemas:\n\n"
+#                 for row in table_rows:
+#                     table_name = row[0]
+#                     schema_desc += f"Table: {table_name}\n"
+                    
+#                     # Get column info for the current table
+#                     col_info_cols, col_info_rows = db_manager.execute_query(f"PRAGMA table_info({table_name});")
+                    
+#                     for col_row in col_info_rows:
+#                         # col_row format: (cid, name, type, notnull, dflt_value, pk)
+#                         schema_desc += f"- {col_row[1]} ({col_row[2]}){' PRIMARY KEY' if col_row[5] else ''}{' NOT NULL' if col_row[3] else ''}\n"
+#                     schema_desc += "\n"
+#                 return schema_desc
+#             except Exception as query_e:
+#                  return f"Error querying SQLite schema: {str(query_e)}"
+#         else:
+#              # Fallback to the method using YAML file if configured
+#              if db_manager.settings.database_schema_path:
+#                  return db_manager.load_schema_description()
+#              else:
+#                  return "Database schema description file not configured."
+
+#     except Exception as e:
+#         # Catch errors during manager initialization or other issues
+#         return f"Error fetching database schema: {str(e)}"
+
 @tool
 def get_database_schema() -> str:
     """Returns the schema description of the database.
@@ -42,35 +84,12 @@ def get_database_schema() -> str:
         A string containing the database schema description.
     """
     try:
-        db_manager: DatabaseManager = get_db_manager()
-        
-        if db_manager.settings.database_type == DatabaseType.SQLITE:
-            # Use the manager's execute_query method which handles thread-local connections
-            try:
-                # Get table names
-                table_cols, table_rows = db_manager.execute_query("SELECT name FROM sqlite_master WHERE type='table';")
-                
-                schema_desc = "Available tables and their schemas:\n\n"
-                for row in table_rows:
-                    table_name = row[0]
-                    schema_desc += f"Table: {table_name}\n"
-                    
-                    # Get column info for the current table
-                    col_info_cols, col_info_rows = db_manager.execute_query(f"PRAGMA table_info({table_name});")
-                    
-                    for col_row in col_info_rows:
-                        # col_row format: (cid, name, type, notnull, dflt_value, pk)
-                        schema_desc += f"- {col_row[1]} ({col_row[2]}){' PRIMARY KEY' if col_row[5] else ''}{' NOT NULL' if col_row[3] else ''}\n"
-                    schema_desc += "\n"
-                return schema_desc
-            except Exception as query_e:
-                 return f"Error querying SQLite schema: {str(query_e)}"
-        else:
+        db_manager: DatabaseManager = get_db_manager()  
              # Fallback to the method using YAML file if configured
-             if db_manager.settings.database_schema_path:
-                 return db_manager.load_schema_description()
-             else:
-                 return "Database schema description file not configured."
+        if db_manager.settings.database_schema_path:
+            return db_manager.load_schema_description()
+        else:
+            return "Database schema description file not configured."
 
     except Exception as e:
         # Catch errors during manager initialization or other issues
