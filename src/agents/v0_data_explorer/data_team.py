@@ -67,6 +67,10 @@ SQL Query:""",
     input_variables=["schema", "query", "retry_feedback"]
 )
 
+# Pydantic model for the structured SQL generation output
+class GeneratedSQL(BaseModel):
+    sql_query: str = Field(description="The generated SQL query.")
+
 # Using JSON output parser for structured validation feedback
 # Define the Pydantic model for the structured output
 class SQLValidationResult(BaseModel):
@@ -133,8 +137,10 @@ def sql_generator_node(state: AgentState, llm_client: Any) -> AgentState:
     )
 
     try:
-        response = llm.invoke([HumanMessage(content=prompt)])
-        raw_sql = response.content.strip()
+        # Use structured output for SQL generation
+        structured_llm = llm.with_structured_output(GeneratedSQL)
+        response_model = structured_llm.invoke([HumanMessage(content=prompt)])
+        raw_sql = response_model.sql_query.strip()
         
         # Clean potential markdown formatting
         if raw_sql.startswith("```sql"):
@@ -154,7 +160,7 @@ def sql_generator_node(state: AgentState, llm_client: Any) -> AgentState:
         
         logger.info(f"👨‍💻 DATA TEAM: Generated SQL (Cleaned): {cleaned_sql}")
         return {"generated_sql": cleaned_sql, "validation_feedback": None} # Clear old feedback
-    except Exception as e:
+    except Exception as e: # Catch potential validation errors from Pydantic/LLM as well
         logger.error(f"👨‍💻 DATA TEAM: Error generating SQL: {e}")
         return {"error_message": f"Failed to generate SQL: {str(e)}"}
 
