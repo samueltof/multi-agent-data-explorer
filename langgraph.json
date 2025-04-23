@@ -5,7 +5,8 @@
     "."
   ],
   "graphs": {
-    "v0_data_explorer": "src.agents.v0_data_explorer.supervisor:create_supervisor_agent"
+    "v0_data_explorer": "src.agents.v0_data_explorer.supervisor:create_supervisor_agent",
+    "v1_data_explorer": "src.agents.v1_data_explorer.supervisor:create_supervisor_agent"
   },
   "env": ".env"
 }

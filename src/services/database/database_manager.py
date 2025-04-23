@@ -74,15 +74,21 @@ class DatabaseManager:
                 schema_data = yaml.safe_load(f)
 
             # Format the schema description
-            description = "Available tables and their structures:\n\n"
+            description = "Database Schema:\\n\\n"
 
-            # Add tables and their columns 
+            # Add tables and their columns
             for table_name, table_info in schema_data["schema"]["tables"].items():
-                description += f"{table_name}\n"
+                table_description = table_info.get("description", "No description available.")
+                description += f"Table: {table_name}\\n"
+                description += f"  Description: {table_description}\\n"
+                description += f"  Columns:\\n"
                 for column in table_info["columns"]:
+                    col_name = column['name']
+                    col_type = column['type']
+                    col_desc = column.get('description', 'No description.') # Get column description
                     constraints = f", {column['constraints']}" if "constraints" in column else ""
-                    description += f"- {column['name']} ({column['type']}{constraints})\n"
-                description += "\n"
+                    description += f"    - {col_name} ({col_type}{constraints}): {col_desc}\\n" # Add description here
+                description += "\\n"
 
             return description
         else:
