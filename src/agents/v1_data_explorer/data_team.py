@@ -14,15 +14,16 @@ from .tools import get_database_schema, execute_sql_query
 MAX_SQL_RETRIES = 2
 # Initial prompt message for the ReAct agent
 REACT_AGENT_INITIAL_PROMPT = """
-You are a data analyst expert tasked with generating SQLite SQL queries based on user requests.
+You are a data analyst expert tasked with generating SQLite SQL queries based on user requests OR providing the database schema when asked.
 You have access to a tool to fetch the database schema (`get_database_schema`).
 
-Your goal is to generate a valid SQLite SQL query to answer the user's question.
-
-1.  Analyze the user's query: {query}
-2.  If you need the database schema to understand the tables and columns, use the `get_database_schema` tool.
-3.  Once you have the necessary information (schema, if required), generate the SQLite SQL query.
-4.  Respond ONLY with the final SQL query itself, without any introductory text, explanations, or markdown formatting like ```sql.
+Your goal is to:
+1. Analyze the user's query: {query}
+2. **If the user is asking for the database schema:** Use the `get_database_schema` tool. Once you receive the schema description from the tool, **respond ONLY with that exact schema description** provided by the tool, without any additional text or SQL.
+3. **If the user is asking a question that requires data from the database:**
+    a. Use the `get_database_schema` tool *if* you need it to understand the tables and columns.
+    b. Once you have the necessary information (schema, if required), generate the appropriate SQLite SQL query.
+    c. Respond ONLY with the final SQL query itself, without any introductory text, explanations, or markdown formatting like ```sql.
 
 {retry_feedback}
 """
@@ -46,34 +47,39 @@ def prepare_data_query_node(state: AgentState) -> Dict[str, Any]:
 
     logger.info(f"👨‍💻 DATA TEAM: Found user query: '{last_human_message_content}'")
 
-    # Check for retry feedback
+    # Check for retry feedback (only relevant if we are retrying SQL generation)
     retry_feedback = state.get("validation_feedback", "")
-    retry_prompt_addition = f"\nRetry Feedback: You previously generated SQL that failed validation with the following feedback: '{retry_feedback}'. Please analyze this feedback and generate a corrected query." if retry_feedback else ""
-
-    # Format the initial prompt for the ReAct agent
+    # Only add retry feedback if we are actually in a SQL retry loop, not if the first try was a schema request
+    # This check can be refined if we add a specific flag for "retrying_sql"
+    is_retrying_sql = state.get("generated_sql") is not None and state.get("validation_status") == "invalid"
+    retry_prompt_addition = ""
+    if is_retrying_sql and retry_feedback:
+        retry_prompt_addition = f"\nRetry Feedback: You previously generated SQL that failed validation with the following feedback: '{retry_feedback}'. Please analyze this feedback and generate a corrected query."
+    
     initial_prompt = REACT_AGENT_INITIAL_PROMPT.format(
         query=last_human_message_content,
         retry_feedback=retry_prompt_addition
     )
 
-    # Reset state fields for this run, but keep the initial message for the agent
     return {
-        "messages": [HumanMessage(content=initial_prompt)], # Start agent with this prompt
-        "natural_language_query": last_human_message_content, # Keep original query for context
-        "schema": state.get("schema"), # Persist schema if available
-        "generated_sql": None,
+        "messages": [HumanMessage(content=initial_prompt)],
+        "natural_language_query": last_human_message_content,
+        "schema": state.get("schema"), 
+        "generated_sql": None, # Reset for this run
+        "provided_schema_text": None, # Reset for this run
         "validation_status": None,
-        "validation_feedback": None, # Clear feedback before agent runs
+        "validation_feedback": None,
         "execution_result": None,
         "error_message": None,
-        "sql_generation_retries": state.get("sql_generation_retries", 0) # Keep retry count from previous attempt if applicable
+        # Preserve retry count if we are coming from an increment_retry node
+        "sql_generation_retries": state.get("sql_generation_retries", 0) if not is_retrying_sql else state["sql_generation_retries"]
     }
 
 
-# --- Node to Extract SQL from ReAct Agent Output ---
-def extract_sql_node(state: AgentState) -> Dict[str, Any]:
-    """Extracts the SQL query from the last message of the ReAct agent."""
-    logger.info("👨‍💻 DATA TEAM: Extracting SQL from ReAct agent output...")
+# --- Node to Extract Schema or SQL from ReAct Agent Output ---
+def extract_schema_or_sql_node(state: AgentState) -> Dict[str, Any]:
+    """Extracts schema text or SQL query from the last message of the ReAct agent."""
+    logger.info("👨‍💻 DATA TEAM: Extracting schema or SQL from ReAct agent output...")
     if state.get("error_message"): # Pass through errors
         return {}
 
@@ -81,23 +87,62 @@ def extract_sql_node(state: AgentState) -> Dict[str, Any]:
 
     if isinstance(last_message, AIMessage) and last_message.content:
         content = last_message.content.strip()
-        # Simple extraction: assume the entire content is the SQL query
-        # More robust: Use regex to find SQL block if agent adds ```sql markers despite prompt
+        
+        # Heuristic to detect if the content is likely a schema description
+        # This could be improved (e.g., checking for specific keywords like "Table:", "Columns:")
+        # For now, we'll rely on the agent's prompt to return *only* schema if it's a schema.
+        # If it's not clearly SQL, we'll assume it might be schema or an error message from the agent.
+        
+        is_likely_schema = "database schema:" in content.lower() or "table:" in content.lower() and "columns:" in content.lower()
+        
+        sql_keywords = ["SELECT ", "INSERT ", "UPDATE ", "DELETE ", "CREATE ", "DROP ", "ALTER "]
+        is_sql = any(kw in content.upper() for kw in sql_keywords)
+        
+        # Try to extract SQL if markdown is present, even if it looks like schema (agent might be wrong)
         sql_match = re.search(r"```sql\s*(.*?)\s*```", content, re.DOTALL | re.IGNORECASE)
+        extracted_sql_from_markdown = None
         if sql_match:
-            extracted_sql = sql_match.group(1).strip()
-            logger.info(f"👨‍💻 DATA TEAM: Extracted SQL (from markdown block): {extracted_sql}")
-        else:
-            # Assume raw content is SQL if no markdown block found
-             extracted_sql = content
-             logger.info(f"👨‍💻 DATA TEAM: Extracted SQL (raw content): {extracted_sql}")
+            extracted_sql_from_markdown = sql_match.group(1).strip()
+            logger.info(f"👨‍💻 DATA TEAM: Found SQL-like content in markdown block: {extracted_sql_from_markdown[:100]}...")
+            # If markdown SQL is found, prioritize it as SQL
+            if extracted_sql_from_markdown and any(kw in extracted_sql_from_markdown.upper() for kw in sql_keywords):
+                logger.info(f"👨‍💻 DATA TEAM: Extracted SQL (from markdown block): {extracted_sql_from_markdown}")
+                return {"generated_sql": extracted_sql_from_markdown, "provided_schema_text": None, "validation_feedback": None}
+            else: # Markdown content wasn't valid SQL structure
+                logger.warning(f"👨‍💻 DATA TEAM: Markdown block found but content doesn't look like valid SQL: {extracted_sql_from_markdown}")
 
-        # Basic sanity check
-        if extracted_sql and any(kw in extracted_sql.upper() for kw in ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER"]):
-            return {"generated_sql": extracted_sql, "validation_feedback": None} # Clear feedback after successful generation attempt
-        else:
-            logger.error(f"👨‍💻 DATA TEAM: Failed to extract valid SQL structure from agent response: {content}")
-            return {"error_message": f"Agent did not produce a valid SQL query structure. Final response: {content}"}
+
+        # If no valid SQL from markdown, evaluate raw content
+        if is_sql and not is_likely_schema: # It looks like SQL and not primarily schema
+            logger.info(f"👨‍💻 DATA TEAM: Extracted SQL (raw content, looks like SQL): {content}")
+            return {"generated_sql": content, "provided_schema_text": None, "validation_feedback": None}
+        
+        elif is_likely_schema and not is_sql: # It looks like schema and not SQL
+            logger.info(f"👨‍💻 DATA TEAM: Identified as schema description: {content[:150]}...")
+            return {"provided_schema_text": content, "generated_sql": None}
+
+        elif is_likely_schema and is_sql: # Ambiguous: contains schema-like terms AND SQL keywords
+             logger.warning(f"👨‍💻 DATA TEAM: Ambiguous output, contains schema-like terms and SQL keywords. Prioritizing as SQL if valid: {content}")
+             if any(kw in content.upper() for kw in sql_keywords): # Double check raw content as SQL
+                logger.info(f"👨‍💻 DATA TEAM: Extracted SQL (raw content, ambiguous but processing as SQL): {content}")
+                return {"generated_sql": content, "provided_schema_text": None, "validation_feedback": None}
+             else: # Doesn't pass SQL keyword check after all
+                logger.info(f"👨‍💻 DATA TEAM: Ambiguous output, but not valid SQL structure. Treating as schema/text: {content[:150]}...")
+                return {"provided_schema_text": content, "generated_sql": None}
+
+        else: # Does not look like SQL and not clearly schema - could be an error message or other text from agent
+            # If agent was supposed to return schema but didn't, or SQL but didn't, this is an issue.
+            # Let's check if the original query explicitly asked for schema.
+            natural_query = state.get("natural_language_query", "").lower()
+            if "schema" in natural_query or "database schema" in natural_query :
+                # Agent was asked for schema but returned something else, treat it as the (possibly bad) schema text
+                logger.warning(f"👨‍💻 DATA TEAM: Expected schema, got this text. Treating as schema: {content[:150]}...")
+                return {"provided_schema_text": content, "generated_sql": None}
+            else:
+                # Expected SQL, but didn't get it
+                logger.error(f"👨‍💻 DATA TEAM: Failed to extract valid SQL structure or schema from agent response: {content}")
+                return {"error_message": f"Agent did not produce a recognizable SQL query or schema. Final response: {content}"}
+                
     else:
         logger.error(f"👨‍💻 DATA TEAM: No valid AIMessage content found from ReAct agent. Last message: {last_message}")
         return {"error_message": "ReAct agent did not return a final message with content."}
@@ -139,10 +184,10 @@ def sql_validator_node(state: AgentState, llm_client: Any) -> AgentState:
     """Validates the generated SQL using an LLM with structured output.
        If schema is not in state, attempts to find it from message history."""
     logger.info("👨‍💻 DATA TEAM: Validating SQL...")
-    if state.get("error_message") or not state.get("generated_sql"):
-        logger.warning("👨‍💻 DATA TEAM: Skipping validation due to prior error or missing SQL.")
-        if not state.get("generated_sql") and not state.get("error_message"):
-             state["error_message"] = "Agent failed to produce an SQL query."
+    if state.get("error_message") or not state.get("generated_sql") or state.get("provided_schema_text"):
+        logger.warning("👨‍💻 DATA TEAM: Skipping SQL validation due to prior error, missing SQL, or schema was provided directly.")
+        if not state.get("generated_sql") and not state.get("provided_schema_text") and not state.get("error_message"):
+             state["error_message"] = "Agent failed to produce an SQL query or schema."
         return {}
 
     schema = state.get("schema")
@@ -215,9 +260,11 @@ def sql_validator_node(state: AgentState, llm_client: Any) -> AgentState:
 def sql_executor_node(state: AgentState) -> AgentState:
     """Executes the validated SQL query using the tool."""
     logger.info("👨‍💻 DATA TEAM: Executing SQL...")
-    if state.get("error_message") or not state.get("generated_sql") or state.get("validation_status") != "valid":
-        if state.get("validation_status") != "valid":
+    if state.get("error_message") or not state.get("generated_sql") or state.get("validation_status") != "valid" or state.get("provided_schema_text"):
+        if state.get("validation_status") != "valid" and not state.get("provided_schema_text"):
             logger.warning(f"👨‍💻 DATA TEAM: Skipping execution because SQL validation status is '{state.get('validation_status')}'.")
+        elif state.get("provided_schema_text"):
+            logger.info("👨‍💻 DATA TEAM: Skipping SQL execution because schema text was provided.")
         return {}
 
     try:
@@ -242,14 +289,23 @@ def format_final_response_node(state: AgentState) -> AgentState:
     logger.info("👨‍💻 DATA TEAM: Formatting final response...")
     error_message = state.get("error_message")
     execution_result = state.get("execution_result")
+    provided_schema_text = state.get("provided_schema_text")
     query = state.get("natural_language_query", "your query")
+    final_message_content = ""
 
-    if error_message:
+    if provided_schema_text:
+        # If schema text was directly provided by the agent, use that as the primary response.
+        # This assumes the agent's task was specifically to provide the schema.
+        final_message_content = f"Okay, here is the database schema you requested for '{query}':\n\n{provided_schema_text}"
+        # Clear other fields that might be confusing if schema is the sole output for this agent turn
+        # state["execution_result"] = None # This node shouldn't modify state beyond messages
+        # state["error_message"] = None
+    elif error_message:
         final_message_content = f"I encountered an error trying to answer '{query}': {error_message}"
     elif execution_result:
-        final_message_content = f"Okay, I looked into '{query}'. Here's the result:\n\n{execution_result}"
-    else:
-        final_message_content = f"I tried processing '{query}', but couldn't successfully execute a query. The final validation feedback was: {state.get('validation_feedback', 'No specific feedback available.')}"
+        final_message_content = f"Okay, I looked into '{query}'. Here's the result from the database:\n\n{execution_result}"
+    else: # No schema, no error, no execution result -> likely SQL validation failed permanently
+        final_message_content = f"I tried processing '{query}' to get data, but couldn't successfully validate or execute an SQL query. The final validation feedback was: {state.get('validation_feedback', 'No specific feedback available.')}"
 
     final_message = AIMessage(content=final_message_content, name="data_team_final_response")
     return {"messages": [final_message]}
@@ -257,18 +313,20 @@ def format_final_response_node(state: AgentState) -> AgentState:
 
 # --- Conditional Edges ---
 
-def check_sql_extraction(state: AgentState) -> str:
-    """Checks if SQL was successfully extracted after the ReAct agent."""
+def check_extraction_result(state: AgentState) -> str:
+    """Checks if schema or SQL was successfully extracted."""
     if state.get("error_message"):
-        logger.error(f"👨‍💻 DATA TEAM: Error detected after SQL extraction attempt: {state['error_message']}")
+        logger.error(f"👨‍💻 DATA TEAM: Error detected after extraction attempt: {state['error_message']}")
         return "handle_error"
+    elif state.get("provided_schema_text"):
+        logger.info("👨‍💻 DATA TEAM: Schema text provided by agent. Proceeding to format response.")
+        return "format_response" # Directly format response if schema was given
     elif state.get("generated_sql"):
         logger.info("👨‍💻 DATA TEAM: SQL extracted successfully. Proceeding to validation.")
         return "validate_sql"
     else:
-         # Should be caught by extract_sql_node setting error_message, but as a fallback
-         logger.error("👨‍💻 DATA TEAM: SQL not found after extraction node, but no error message set. Handling as error.")
-         state["error_message"] = "SQL extraction failed unexpectedly."
+         logger.error("👨‍💻 DATA TEAM: Neither schema nor SQL found after extraction, but no error message set. Handling as error.")
+         state["error_message"] = "Extraction failed unexpectedly to find schema or SQL."
          return "handle_error"
 
 
@@ -286,20 +344,27 @@ def decide_after_validation(state: AgentState) -> str:
         return "execute_sql"
     elif retries < MAX_SQL_RETRIES:
         logger.warning(f"👨‍💻 DATA TEAM: SQL Invalid. Retrying generation (Attempt {retries + 1}). Feedback: {state.get('validation_feedback')}")
-        # Increment happens in the 'increment_retry' node now
-        return "retry_sql_generation"
+        return "retry_sql_generation" # This will go to increment_retry then prepare_query
     else:
         logger.error(f"👨‍💻 DATA TEAM: SQL Invalid after {MAX_SQL_RETRIES} retries. Handling error.")
         state["error_message"] = f"SQL validation failed after {MAX_SQL_RETRIES} attempts. Last feedback: {state.get('validation_feedback')}"
         return "handle_error"
 
 
-def check_for_errors(state: AgentState) -> str:
-    """Generic check for errors before proceeding (used after prepare and execute)."""
+def check_for_errors_before_agent(state: AgentState) -> str:
+    """Generic check for errors before proceeding to agent (used after prepare)."""
     if state.get("error_message"):
-        logger.error(f"👨‍💻 DATA TEAM: Error detected in check_for_errors: {state['error_message']}")
+        logger.error(f"👨‍💻 DATA TEAM: Error detected in prepare_query: {state['error_message']}")
         return "handle_error"
-    return "continue"
+    return "continue_to_agent" # New target name for clarity
+
+
+def check_for_errors_after_execution(state: AgentState) -> str:
+    """Generic check for errors after SQL execution."""
+    if state.get("error_message"):
+        logger.error(f"👨‍💻 DATA TEAM: Error detected after SQL execution: {state['error_message']}")
+        return "handle_error"
+    return "continue_to_format" # New target name for clarity
 
 
 # --- Graph Definition ---
@@ -318,7 +383,7 @@ def create_data_team_graph(llm_client: Any):
     # Add nodes
     workflow.add_node("prepare_query", prepare_data_query_node)
     workflow.add_node("sql_generating_agent", sql_generating_agent) # The prebuilt ReAct agent
-    workflow.add_node("extract_sql", extract_sql_node) # New node to extract SQL
+    workflow.add_node("extract_schema_or_sql", extract_schema_or_sql_node) # New node to extract schema or SQL
     workflow.add_node("validate_sql", validate_sql_with_llm)
     workflow.add_node("execute_sql", sql_executor_node)
     workflow.add_node("handle_error", handle_error_node)
@@ -327,8 +392,8 @@ def create_data_team_graph(llm_client: Any):
     # Helper node to increment retry counter before looping back to agent
     workflow.add_node("increment_retry", lambda state: {
         "sql_generation_retries": state.get("sql_generation_retries", 0) + 1,
-        "messages": [] # Clear messages before retry to avoid confusing agent? Or keep history? Let's clear for now.
-        # Alternative: Keep history but add a specific retry instruction in prepare_query
+        "messages": [], # Clear messages before retry for SQL generation
+        "provided_schema_text": None # Clear this if we are retrying SQL
     })
 
 
@@ -338,22 +403,23 @@ def create_data_team_graph(llm_client: Any):
     # Add edges
     workflow.add_conditional_edges(
         "prepare_query",
-        check_for_errors, # Check for errors during preparation
+        check_for_errors_before_agent, # Check for errors during preparation
         {
             "handle_error": "handle_error",
-            "continue": "sql_generating_agent" # Start the ReAct agent
+            "continue_to_agent": "sql_generating_agent" # Start the ReAct agent
         }
     )
 
     # Edge from ReAct agent to SQL extraction node
-    workflow.add_edge("sql_generating_agent", "extract_sql")
+    workflow.add_edge("sql_generating_agent", "extract_schema_or_sql")
 
     # Conditional edge after SQL extraction
     workflow.add_conditional_edges(
-        "extract_sql",
-        check_sql_extraction, # Check if SQL was found
+        "extract_schema_or_sql",
+        check_extraction_result, # Check if schema or SQL was found
         {
             "validate_sql": "validate_sql",
+            "format_response": "format_response", # New path for direct schema response
             "handle_error": "handle_error"
         }
     )
@@ -375,10 +441,10 @@ def create_data_team_graph(llm_client: Any):
     # Edge after execution
     workflow.add_conditional_edges(
         "execute_sql",
-        check_for_errors, # Check for execution errors
+        check_for_errors_after_execution, # Check for execution errors
         {
             "handle_error": "handle_error",
-            "continue": "format_response"
+            "continue_to_format": "format_response"
         }
     )
 
@@ -389,5 +455,5 @@ def create_data_team_graph(llm_client: Any):
     # Compile the graph
     data_team_app = workflow.compile()
     data_team_app.name = "data_analysis_team"
-    logger.info("👨‍💻 DATA TEAM: Compiled graph using prebuilt ReAct agent.")
+    logger.info("👨‍💻 DATA TEAM: Compiled graph with schema/SQL extraction logic.")
     return data_team_app 

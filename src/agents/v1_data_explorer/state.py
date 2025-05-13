@@ -14,6 +14,7 @@ class AgentState(TypedDict):
     execution_result: Optional[str] = None # Result from DB execution
     error_message: Optional[str] = None # To capture errors in the flow
     sql_generation_retries: int = 0 # Counter for SQL generation attempts
+    provided_schema_text: Optional[str] = None # To store schema if provided directly by data agent
     # Potentially add other state variables here if needed
     # e.g., active_agent: str | None = None
     # e.g., data_query: str | None = None

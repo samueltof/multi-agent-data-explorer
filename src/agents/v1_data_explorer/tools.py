@@ -48,9 +48,6 @@ def get_database_schema() -> str:
         logger.info(f"🛠️ TOOL get_database_schema: Fetching database schema using {db_manager.settings.database_schema_path}")
         if db_manager.settings.database_schema_path:
             schema_description = db_manager.load_schema_description()   
-            logger.info(f"🛠️ TOOL get_database_schema: Schema description loaded successfully.")
-            # Log only a snippet or confirmation instead of the full schema
-            logger.debug(f"🛠️ TOOL get_database_schema: Schema starts with: {schema_description[:100]}...") # Log beginning for verification
             return schema_description
         else:
             logger.warning("🛠️ TOOL get_database_schema: Database schema description file not configured.")

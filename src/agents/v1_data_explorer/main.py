@@ -11,72 +11,77 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from langchain_core.messages import HumanMessage, AIMessage # Ensure AIMessage is imported
-from .state import AgentState
+# AgentState is not directly used in main.py but is central to the agent's operation.
+# from .state import AgentState 
 from .supervisor import create_supervisor_agent
-from .tools import data_tools, web_tools  # Import the tool lists
+# Tools are used by agents, not directly in main.py orchestration usually.
+# from .tools import data_tools, web_tools 
 from src.config.logger import logger
 
 load_dotenv()
 
-# Combine the tool lists
-all_tools = data_tools + web_tools
+# Combine the tool lists - This might not be needed here if tools are managed by agents
+# all_tools = data_tools + web_tools
 
-# Make the function async
-async def run_agent(query: str):
-    """Runs the supervisor agent with the given query."""
+async def run_agent_session(query: str):
+    """Runs the supervisor agent for a single query and handles its lifecycle."""
     logger.info(f"Starting agent execution with query: '{query}'")
     
-    final_state_snapshot = None # Variable to store the last state
+    app = None  # Initialize app to None for the finally block
+    final_state_snapshot = None
     
     try:
-        # Create the supervisor agent application (await the async function)
+        # Create the supervisor agent application. 
+        # All async resources (LLM client, agents) should be created within this scope.
         app = await create_supervisor_agent()
         
-        # Format the input for the LangGraph application
         inputs = {"messages": [HumanMessage(content=query)]}
-        
-        # Invoke the agent
-        # Stream events to see the flow (optional, can use .invoke for final result)
-        # final_state = app.invoke(inputs)
         
         logger.info("Streaming agent execution steps...")
         async for output in app.astream(inputs, stream_mode="values"):
-            # output is the current state of the graph
-            # Keep printing the detailed output
-            pprint(output) 
-            print("---")
-            final_state_snapshot = output # Store the latest state
+            # pprint(output) # Keep this for detailed debugging if needed
+            # print("---")
+            final_state_snapshot = output 
 
-        # After the stream is finished, print the final formatted response
         if final_state_snapshot and "messages" in final_state_snapshot:
             final_messages = final_state_snapshot["messages"]
             if final_messages:
                 last_message = final_messages[-1]
-                # Check if the last message is an AIMessage and not a handoff/tool call
-                if isinstance(last_message, AIMessage) and not last_message.tool_calls and not getattr(last_message.response_metadata, '__is_handoff_back', False):
-                    print("\n" + "="*30)
-                    print("Agent Final Response:")
+                if (isinstance(last_message, AIMessage) and
+                   not last_message.tool_calls and
+                   not getattr(last_message.response_metadata, '__is_handoff_back', False)):
+                    # Simplified logging for final response
+                    logger.info(f"ALL Response: {final_messages}")
+                    print("\nAgent Final Response:")
                     print(last_message.content)
-                    print("="*30 + "\n")
+                    print("-" * 30)
                 else:
-                    logger.info("Last message was not a displayable AIMessage.")
+                    logger.info("Last message was not a displayable AIMessage or was a handoff.")
             else:
                 logger.warning("Final state snapshot contained no messages.")
         else:
-             logger.warning("No final state snapshot captured from the stream.")
-
+             logger.warning("No final state snapshot captured from the stream or messages key missing.")
 
     except Exception as e:
         logger.error(f"Agent execution failed: {e}", exc_info=True)
-        print(f"\nAgent encountered an error: {e}\n") # Also inform user in chat
+        print(f"\nAgent encountered an error: {e}\n")
+    finally:
+        # Attempt to hint at cleanup, though Python's GC should handle 'app' going out of scope.
+        # If 'app' or underlying components (like an LLM client) need explicit async cleanup,
+        # they should implement an __aexit__ or an async close() method.
+        if app is not None:
+            # If LangGraph's compiled app or the LLM client had an async close method:
+            # if hasattr(app, 'aclose'):
+            #     await app.aclose()
+            # elif hasattr(app, 'llm_service_to_close') and hasattr(app.llm_service_to_close, 'aclose'):
+            # await app.llm_service_to_close.aclose()
+            logger.debug("run_agent_session finished, 'app' going out of scope.")
+        del app # Explicitly delete to hint to GC
+        del final_state_snapshot
 
-def main():
-    # Example Usage:
-    # Provide a sample query
-    # example_query = "What were the total sales for product 'X' in the last quarter?"
-    # example_query = "How many tables are in the database?"
-    # example_query = "What is the latest news about large language models?"
-    
+
+def main_chat_loop():
+    """Main loop for the chat interface."""
     print("Starting Data Explorer Agent Chat Interface...")
     print("Type 'exit' or 'quit' to end the session.")
     
@@ -86,20 +91,27 @@ def main():
             if user_query.lower() in ["exit", "quit"]:
                 print("Exiting...")
                 break
-            if not user_query:
+            if not user_query.strip():
                 continue
                 
-            print("Agent: Processing...") # Indicate that the agent is working
-            # Use asyncio.run to execute the async function for each query
-            asyncio.run(run_agent(user_query))
-            # Removed the separator print here, final response print adds its own separators
+            print("Agent: Processing...")
+            # Each call to asyncio.run creates a new event loop, runs the coro, 
+            # and closes the loop. This is generally good for isolating sessions.
+            asyncio.run(run_agent_session(user_query))
             
         except KeyboardInterrupt:
-            print("\nExiting...")
+            print("\nExiting due to KeyboardInterrupt...")
             break
         except Exception as e:
             logger.error(f"An error occurred in the chat loop: {e}", exc_info=True)
-            print("An error occurred. Please try again.")
+            # Avoid printing overly verbose errors directly to user in chat loop
+            print("An unexpected error occurred. Please check logs or try again.")
+        finally:
+            # Any cleanup that needs to happen after each query, if not handled by asyncio.run scope
+            pass
+    
+    logger.info("Chat interface stopped.")
 
 if __name__ == "__main__":
-    main() 
+    # Renamed main function to avoid confusion if we want to import run_agent_session elsewhere
+    main_chat_loop() 

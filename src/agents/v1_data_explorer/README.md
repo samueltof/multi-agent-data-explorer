@@ -1,6 +1,6 @@
-# Data Explorer Agent (v0)
+# Data Explorer Agent (v1)
 
-This agent acts as a multi-agent system designed to answer user queries by either searching the web or interacting with a configured SQLite database.
+This agent acts as a multi-agent system designed to answer user queries by orchestrating tasks between a web search agent and a data analysis team that interacts with a configured SQLite database.
 
 ## Architecture
 
@@ -8,68 +8,84 @@ The system employs a supervisor-worker pattern built using [LangGraph](https://p
 
 1.  **Supervisor Agent (`supervisor.py`)**:
     *   Receives the initial user query.
-    *   Analyzes the query to determine the appropriate worker agent:
+    *   Analyzes the query to determine the appropriate worker agent or sequence of agents.
         *   `web_search_agent`: For general knowledge, current events, or web lookups.
         *   `data_analysis_team`: For questions requiring database interaction (schema lookup, SQL query generation, execution).
-    *   Routes the query to the selected worker.
-    *   Receives the result from the worker and presents the final answer to the user.
+    *   **Orchestration**: If a query requires multiple steps (e.g., fetch data then search web based on results), the supervisor routes tasks sequentially, ensuring context is passed via message history.
+    *   **Synthesis**: Receives results from worker(s) and synthesizes them into a final, coherent response for the user. The prompt for the supervisor guides it to combine information from all participating agents if multiple were involved.
 
 2.  **Web Search Agent (`web_search_agent.py`)**:
-    *   A dedicated agent (likely using LangChain agent tools) that performs web searches to answer queries. (Details are within its own implementation, managed by the supervisor).
+    *   A ReAct-based agent responsible for performing web searches using available tools (e.g., Tavily Search).
+    *   Receives tasks from the supervisor and returns search findings.
 
 3.  **Data Analysis Team (`data_team.py`)**:
     *   A specialized LangGraph graph responsible for database interactions:
-        *   **Fetch Schema**: Retrieves the schema of the connected SQLite database.
-        *   **Generate SQL**: Uses an LLM to generate a SQLite query based on the user's natural language question and the database schema.
-        *   **Validate SQL**: Uses an LLM to validate the generated SQL for correctness and appropriateness. Includes a retry mechanism (`MAX_SQL_RETRIES = 2`) if validation fails.
-        *   **Execute SQL**: Executes the validated SQL query against the database.
-        *   **Format Response**: Prepares the query results or error messages for the supervisor.
+        *   **Schema or SQL Focus**: The team can either provide the database schema directly or generate and execute SQL queries.
+        *   **`extract_schema_or_sql_node`**: A key node that determines if the agent's LLM output is schema text or an SQL query.
+        *   **Schema Path**: If schema text is identified, it bypasses SQL validation/execution and is returned directly.
+        *   **SQL Path**: If SQL is identified:
+            *   **Generate SQL**: Uses an LLM (ReAct agent) to generate a SQLite query based on the user's natural language question and the database schema.
+            *   **Validate SQL**: Uses an LLM to validate the generated SQL. Includes a retry mechanism (`MAX_SQL_RETRIES = 2`).
+            *   **Execute SQL**: Executes the validated SQL query.
+        *   **Format Response**: Prepares the schema, query results, or error messages for the supervisor.
 
 ## Key Components
 
-*   **`main.py`**: Entry point for running the agent. Parses command-line arguments for the query.
-*   **`supervisor.py`**: Defines the main supervisor agent logic and routing.
-*   **`data_team.py`**: Defines the LangGraph workflow for the data analysis sub-agent.
-*   **`web_search_agent.py`**: Defines the web search sub-agent.
-*   **`state.py`**: Defines the shared `AgentState` TypedDict used for passing information within the LangGraph workflows.
-*   **`tools.py`**: Contains the definitions or wrappers for tools used by the agents (e.g., `get_database_schema`, `execute_sql_query`, web search tools).
-*   **`config.py`**: Handles configuration, particularly LLM client setup (async).
+*   **`main.py`**: Entry point for running the agent. Provides an interactive chat loop.
+*   **`supervisor.py`**: Defines the main supervisor agent logic, multi-step orchestration, and response synthesis.
+*   **`data_team.py`**: Defines the LangGraph workflow for the data analysis sub-agent, including schema/SQL differentiation.
+*   **`web_search_agent.py`**: Defines the web search ReAct sub-agent.
+*   **`state.py`**: Defines the shared `AgentState` TypedDict, including fields like `provided_schema_text`.
+*   **`tools.py`**: Contains tool definitions (e.g., `get_database_schema`, `execute_sql_query`, web search tools).
+*   **`config.py`**: Handles configuration, particularly asynchronous LLM client setup.
 
 ## Setup and Configuration
 
-1.  **Environment Variables**: The agent relies on environment variables loaded via a `.env` file in the project root. Ensure this file contains necessary API keys (e.g., for the LLM provider like OpenAI or Anthropic) and potentially database connection details if not hardcoded in the tools.
+1.  **Environment Variables**: Uses a `.env` file in the project root.
     ```dotenv
     # Example .env content
-    OPENAI_API_KEY="sk-..."
-    TAVILY_API_KEY="..." # If using Tavily for web search
-    # Add other necessary variables (e.g., database path if needed by tools)
-    SQLITE_DB_PATH="path/to/your/database.db"
+    OPENAI_API_KEY="sk-YourOpenAIKey"
+    TAVILY_API_KEY="tvly-YourTavilyKey" # For web search tool
+    # Database configuration (used by tools.py and config.py)
+    DB_TYPE="sqlite" # or other types if DatabaseManager supports them
+    DB_NAME="./databases/dummy_db_clinical_trials/clinical_trials.db" # Path to SQLite file
+    DB_SCHEMA_PATH="./databases/dummy_db_clinical_trials/schema_description.yaml" # Path to YAML schema description
     ```
-2.  **Database**: The `data_analysis_team` is configured to interact with a SQLite database. The specific database file path needs to be accessible and correctly configured, likely within the `tools.py` implementation or via an environment variable used by the tools.
-3.  **Dependencies**: Install required Python packages. (A `requirements.txt` file would be beneficial here, but assuming standard LangChain/LangGraph dependencies).
+2.  **Database**: The `data_analysis_team` uses a SQLite database. Paths are configured via environment variables.
+3.  **Dependencies**: Install required Python packages (see `requirements.txt` if available, otherwise standard LangChain/LangGraph, OpenAI, Tavily, etc.).
 
 ## How to Run
 
 Execute the agent from the project root directory (`multi-agent-data-explorer`):
 
 ```bash
-python src/agents/v0_data_explorer/main.py "Your query about data or the web"
+python -m src.agents.v1_data_explorer.main
 ```
 
-For example:
+This will start an interactive chat session. You can then type your queries.
 
-```bash
-# Query the database
-python src/agents/v0_data_explorer/main.py "How many users are in the database?"
+Example queries:
 
-# Ask a general question
-python src/agents/v0_data_explorer/main.py "What is the latest news about AI?"
+```
+# Get database schema, then weather (multi-step)
+Tell me what is the database schema using the data agent, then tell me what is the weather in montreal using the web search agent
+
+# Get data from DB, then search web based on results (multi-step)
+What are the mechanisms of action and targets from the database and what can we find about this in the web?
+
+# Query the database (single agent step for data team)
+How many patients are in the database?
+
+# Ask a general question (single agent step for web search)
+What is the latest news about AI?
 ```
 
-The agent will stream its internal state and steps to the console during execution.
+The agent streams its internal logging to the console, and the final response is printed.
 
 ## Notes
 
-*   The agent uses asynchronous operations (`asyncio`) for potentially improved performance, especially around LLM calls and potentially tool usage.
-*   Error handling is implemented within the graph nodes to manage issues during schema fetching, SQL generation/validation, and execution.
-*   Logging is configured via `src.config.logger`. 
+*   The system is fully asynchronous (`asyncio`).
+*   Error handling is implemented within agent graphs.
+*   Logging is configured via `src.config.logger`.
+*   The supervisor prompt has been enhanced to explicitly guide multi-step orchestration and final response synthesis.
+*   The data team can now distinguish between requests for schema information and requests requiring SQL query generation, handling each appropriately. 
