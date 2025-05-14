@@ -24,23 +24,24 @@ load_dotenv()
 # all_tools = data_tools + web_tools
 
 async def run_agent_session(query: str):
-    """Runs the supervisor agent for a single query and handles its lifecycle."""
+    """
+    Runs the supervisor agent for a single query and handles its lifecycle.
+    Returns a dictionary containing the agent's final response ('response_content')
+    and any generated SQL ('generated_sql').
+    """
     logger.info(f"Starting agent execution with query: '{query}'")
     
-    app = None  # Initialize app to None for the finally block
+    app = None
     final_state_snapshot = None
-    
+    response_content = "Agent did not produce a final response." # Default response
+    generated_sql_output = None
+
     try:
-        # Create the supervisor agent application. 
-        # All async resources (LLM client, agents) should be created within this scope.
         app = await create_supervisor_agent()
-        
         inputs = {"messages": [HumanMessage(content=query)]}
         
         logger.info("Streaming agent execution steps...")
         async for output in app.astream(inputs, stream_mode="values"):
-            # pprint(output) # Keep this for detailed debugging if needed
-            # print("---")
             final_state_snapshot = output 
 
         if final_state_snapshot and "messages" in final_state_snapshot:
@@ -50,33 +51,46 @@ async def run_agent_session(query: str):
                 if (isinstance(last_message, AIMessage) and
                    not last_message.tool_calls and
                    not getattr(last_message.response_metadata, '__is_handoff_back', False)):
-                    # Simplified logging for final response
-                    logger.info(f"ALL Response: {final_messages}")
-                    print("\nAgent Final Response:")
-                    print(last_message.content)
-                    print("-" * 30)
+                    logger.info(f"Agent Final Response: {last_message.content}")
+                    response_content = last_message.content
                 else:
                     logger.info("Last message was not a displayable AIMessage or was a handoff.")
+                    response_content = "Agent finished processing, but no displayable message was returned."
             else:
                 logger.warning("Final state snapshot contained no messages.")
+                response_content = "Agent processed the query but did not return any messages."
         else:
              logger.warning("No final state snapshot captured from the stream or messages key missing.")
+             response_content = "Agent stream did not yield a final state with messages."
+        
+        # ---- ADDING DETAILED LOGGING HERE ----
+        logger.info(f"run_agent_session - final_state_snapshot received by run_agent_session: {final_state_snapshot}")
+        # ---- END OF ADDED LOGGING ----
+
+        if final_state_snapshot:
+            generated_sql_output = final_state_snapshot.get("generated_sql")
+            if generated_sql_output:
+                logger.info(f"Extracted SQL: {generated_sql_output}")
+        
+        return_value = {
+            "response_content": response_content,
+            "generated_sql": generated_sql_output
+        }
+        logger.info(f"run_agent_session returning (try): {type(return_value)} - {return_value}")
+        return return_value
 
     except Exception as e:
         logger.error(f"Agent execution failed: {e}", exc_info=True)
-        print(f"\nAgent encountered an error: {e}\n")
+        return_value = {
+            "response_content": f"Agent encountered an error: {e}",
+            "generated_sql": None
+        }
+        logger.info(f"run_agent_session returning (except): {type(return_value)} - {return_value}")
+        return return_value
     finally:
-        # Attempt to hint at cleanup, though Python's GC should handle 'app' going out of scope.
-        # If 'app' or underlying components (like an LLM client) need explicit async cleanup,
-        # they should implement an __aexit__ or an async close() method.
         if app is not None:
-            # If LangGraph's compiled app or the LLM client had an async close method:
-            # if hasattr(app, 'aclose'):
-            #     await app.aclose()
-            # elif hasattr(app, 'llm_service_to_close') and hasattr(app.llm_service_to_close, 'aclose'):
-            # await app.llm_service_to_close.aclose()
             logger.debug("run_agent_session finished, 'app' going out of scope.")
-        del app # Explicitly delete to hint to GC
+        del app
         del final_state_snapshot
 
 
@@ -94,10 +108,14 @@ def main_chat_loop():
             if not user_query.strip():
                 continue
                 
-            print("Agent: Processing...")
+            print("Agent: Processing...") # Keep this for console, Streamlit will have its own
             # Each call to asyncio.run creates a new event loop, runs the coro, 
             # and closes the loop. This is generally good for isolating sessions.
-            asyncio.run(run_agent_session(user_query))
+            response_data = asyncio.run(run_agent_session(user_query))
+            # Print the returned response - adapt for dict
+            print(f"Agent Response: {response_data.get('response_content')}")
+            if response_data.get('generated_sql'):
+                print(f"Generated SQL: {response_data.get('generated_sql')}")
             
         except KeyboardInterrupt:
             print("\nExiting due to KeyboardInterrupt...")

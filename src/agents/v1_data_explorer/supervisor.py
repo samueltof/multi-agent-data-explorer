@@ -71,7 +71,7 @@ async def create_supervisor_agent() -> CompiledStateGraph:
         prompt=SUPERVISOR_PROMPT,
         # State definition is implicitly taken from the agents if they share one,
         # but explicitly providing it can be clearer if needed.
-        # state_schema=AgentState 
+        state_schema=AgentState
     )
     
     # Compile the supervisor graph

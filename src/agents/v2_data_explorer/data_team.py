@@ -81,73 +81,71 @@ def extract_schema_or_sql_node(state: AgentState) -> Dict[str, Any]:
     """Extracts schema text or SQL query from the last message of the ReAct agent."""
     logger.info("👨‍💻 DATA TEAM: Extracting schema or SQL from ReAct agent output...")
     if state.get("error_message"): # Pass through errors
-        logger.info(f"👨‍💻 DATA TEAM (extract_schema_or_sql_node) returning due to error_message: {state.get('error_message')}")
         return {}
 
     last_message = state["messages"][-1] if state["messages"] else None
-    return_dict = {}
 
     if isinstance(last_message, AIMessage) and last_message.content:
         content = last_message.content.strip()
         
+        # Heuristic to detect if the content is likely a schema description
+        # This could be improved (e.g., checking for specific keywords like "Table:", "Columns:")
+        # For now, we'll rely on the agent's prompt to return *only* schema if it's a schema.
+        # If it's not clearly SQL, we'll assume it might be schema or an error message from the agent.
+        
         is_likely_schema = "database schema:" in content.lower() or "table:" in content.lower() and "columns:" in content.lower()
+        
         sql_keywords = ["SELECT ", "INSERT ", "UPDATE ", "DELETE ", "CREATE ", "DROP ", "ALTER "]
         is_sql = any(kw in content.upper() for kw in sql_keywords)
         
+        # Try to extract SQL if markdown is present, even if it looks like schema (agent might be wrong)
         sql_match = re.search(r"```sql\s*(.*?)\s*```", content, re.DOTALL | re.IGNORECASE)
         extracted_sql_from_markdown = None
         if sql_match:
             extracted_sql_from_markdown = sql_match.group(1).strip()
             logger.info(f"👨‍💻 DATA TEAM: Found SQL-like content in markdown block: {extracted_sql_from_markdown[:100]}...")
+            # If markdown SQL is found, prioritize it as SQL
             if extracted_sql_from_markdown and any(kw in extracted_sql_from_markdown.upper() for kw in sql_keywords):
                 logger.info(f"👨‍💻 DATA TEAM: Extracted SQL (from markdown block): {extracted_sql_from_markdown}")
-                return_dict = {"generated_sql": extracted_sql_from_markdown, "provided_schema_text": None, "validation_feedback": None}
-                logger.info(f"👨‍💻 DATA TEAM (extract_schema_or_sql_node) returning: {return_dict}")
-                return return_dict
-            else:
+                return {"generated_sql": extracted_sql_from_markdown, "provided_schema_text": None, "validation_feedback": None}
+            else: # Markdown content wasn't valid SQL structure
                 logger.warning(f"👨‍💻 DATA TEAM: Markdown block found but content doesn't look like valid SQL: {extracted_sql_from_markdown}")
 
-        if is_sql and not is_likely_schema:
-            logger.info(f"👨‍💻 DATA TEAM: Extracted SQL (raw content, looks like SQL): {content}")
-            return_dict = {"generated_sql": content, "provided_schema_text": None, "validation_feedback": None}
-            logger.info(f"👨‍💻 DATA TEAM (extract_schema_or_sql_node) returning: {return_dict}")
-            return return_dict
-        
-        elif is_likely_schema and not is_sql:
-            logger.info(f"👨‍💻 DATA TEAM: Identified as schema description: {content[:150]}...")
-            return_dict = {"provided_schema_text": content, "generated_sql": None}
-            logger.info(f"👨‍💻 DATA TEAM (extract_schema_or_sql_node) returning: {return_dict}")
-            return return_dict
 
-        elif is_likely_schema and is_sql:
+        # If no valid SQL from markdown, evaluate raw content
+        if is_sql and not is_likely_schema: # It looks like SQL and not primarily schema
+            logger.info(f"👨‍💻 DATA TEAM: Extracted SQL (raw content, looks like SQL): {content}")
+            return {"generated_sql": content, "provided_schema_text": None, "validation_feedback": None}
+        
+        elif is_likely_schema and not is_sql: # It looks like schema and not SQL
+            logger.info(f"👨‍💻 DATA TEAM: Identified as schema description: {content[:150]}...")
+            return {"provided_schema_text": content, "generated_sql": None}
+
+        elif is_likely_schema and is_sql: # Ambiguous: contains schema-like terms AND SQL keywords
              logger.warning(f"👨‍💻 DATA TEAM: Ambiguous output, contains schema-like terms and SQL keywords. Prioritizing as SQL if valid: {content}")
-             if any(kw in content.upper() for kw in sql_keywords):
+             if any(kw in content.upper() for kw in sql_keywords): # Double check raw content as SQL
                 logger.info(f"👨‍💻 DATA TEAM: Extracted SQL (raw content, ambiguous but processing as SQL): {content}")
-                return_dict = {"generated_sql": content, "provided_schema_text": None, "validation_feedback": None}
-                logger.info(f"👨‍💻 DATA TEAM (extract_schema_or_sql_node) returning: {return_dict}")
-                return return_dict
-             else:
+                return {"generated_sql": content, "provided_schema_text": None, "validation_feedback": None}
+             else: # Doesn't pass SQL keyword check after all
                 logger.info(f"👨‍💻 DATA TEAM: Ambiguous output, but not valid SQL structure. Treating as schema/text: {content[:150]}...")
-                return_dict = {"provided_schema_text": content, "generated_sql": None}
-                logger.info(f"👨‍💻 DATA TEAM (extract_schema_or_sql_node) returning: {return_dict}")
-                return return_dict
-        else:
+                return {"provided_schema_text": content, "generated_sql": None}
+
+        else: # Does not look like SQL and not clearly schema - could be an error message or other text from agent
+            # If agent was supposed to return schema but didn't, or SQL but didn't, this is an issue.
+            # Let's check if the original query explicitly asked for schema.
             natural_query = state.get("natural_language_query", "").lower()
             if "schema" in natural_query or "database schema" in natural_query :
+                # Agent was asked for schema but returned something else, treat it as the (possibly bad) schema text
                 logger.warning(f"👨‍💻 DATA TEAM: Expected schema, got this text. Treating as schema: {content[:150]}...")
-                return_dict = {"provided_schema_text": content, "generated_sql": None}
-                logger.info(f"👨‍💻 DATA TEAM (extract_schema_or_sql_node) returning: {return_dict}")
-                return return_dict
+                return {"provided_schema_text": content, "generated_sql": None}
             else:
+                # Expected SQL, but didn't get it
                 logger.error(f"👨‍💻 DATA TEAM: Failed to extract valid SQL structure or schema from agent response: {content}")
-                return_dict = {"error_message": f"Agent did not produce a recognizable SQL query or schema. Final response: {content}"}
-                logger.info(f"👨‍💻 DATA TEAM (extract_schema_or_sql_node) returning with error: {return_dict}")
-                return return_dict
+                return {"error_message": f"Agent did not produce a recognizable SQL query or schema. Final response: {content}"}
+                
     else:
         logger.error(f"👨‍💻 DATA TEAM: No valid AIMessage content found from ReAct agent. Last message: {last_message}")
-        return_dict = {"error_message": "ReAct agent did not return a final message with content."}
-        logger.info(f"👨‍💻 DATA TEAM (extract_schema_or_sql_node) returning with error: {return_dict}")
-        return return_dict
+        return {"error_message": "ReAct agent did not return a final message with content."}
 
 
 # --- SQL Validation and Execution Nodes (Largely Unchanged) ---
@@ -186,7 +184,6 @@ def sql_validator_node(state: AgentState, llm_client: Any) -> AgentState:
     """Validates the generated SQL using an LLM with structured output.
        If schema is not in state, attempts to find it from message history."""
     logger.info("👨‍💻 DATA TEAM: Validating SQL...")
-    logger.info(f"👨‍💻 DATA TEAM (sql_validator_node) received generated_sql: {state.get('generated_sql')}")
     if state.get("error_message") or not state.get("generated_sql") or state.get("provided_schema_text"):
         logger.warning("👨‍💻 DATA TEAM: Skipping SQL validation due to prior error, missing SQL, or schema was provided directly.")
         if not state.get("generated_sql") and not state.get("provided_schema_text") and not state.get("error_message"):
@@ -263,7 +260,6 @@ def sql_validator_node(state: AgentState, llm_client: Any) -> AgentState:
 def sql_executor_node(state: AgentState) -> AgentState:
     """Executes the validated SQL query using the tool."""
     logger.info("👨‍💻 DATA TEAM: Executing SQL...")
-    logger.info(f"👨‍💻 DATA TEAM (sql_executor_node) received generated_sql: {state.get('generated_sql')}")
     if state.get("error_message") or not state.get("generated_sql") or state.get("validation_status") != "valid" or state.get("provided_schema_text"):
         if state.get("validation_status") != "valid" and not state.get("provided_schema_text"):
             logger.warning(f"👨‍💻 DATA TEAM: Skipping execution because SQL validation status is '{state.get('validation_status')}'.")
@@ -289,10 +285,8 @@ def handle_error_node(state: AgentState) -> AgentState:
 
 
 def format_final_response_node(state: AgentState) -> AgentState:
-    """Formats the final response message for the supervisor and preserves other state keys."""
+    """Formats the final response message for the supervisor."""
     logger.info("👨‍💻 DATA TEAM: Formatting final response...")
-    logger.info(f"👨‍💻 DATA TEAM (format_final_response_node) received full state: {state}")
-    logger.info(f"👨‍💻 DATA TEAM (format_final_response_node) state.get('generated_sql'): {state.get('generated_sql')}")
     error_message = state.get("error_message")
     execution_result = state.get("execution_result")
     provided_schema_text = state.get("provided_schema_text")
@@ -300,68 +294,21 @@ def format_final_response_node(state: AgentState) -> AgentState:
     final_message_content = ""
 
     if provided_schema_text:
+        # If schema text was directly provided by the agent, use that as the primary response.
+        # This assumes the agent's task was specifically to provide the schema.
         final_message_content = f"Okay, here is the database schema you requested for '{query}':\n\n{provided_schema_text}"
+        # Clear other fields that might be confusing if schema is the sole output for this agent turn
+        # state["execution_result"] = None # This node shouldn't modify state beyond messages
+        # state["error_message"] = None
     elif error_message:
         final_message_content = f"I encountered an error trying to answer '{query}': {error_message}"
     elif execution_result:
         final_message_content = f"Okay, I looked into '{query}'. Here's the result from the database:\n\n{execution_result}"
-    else:
+    else: # No schema, no error, no execution result -> likely SQL validation failed permanently
         final_message_content = f"I tried processing '{query}' to get data, but couldn't successfully validate or execute an SQL query. The final validation feedback was: {state.get('validation_feedback', 'No specific feedback available.')}"
 
     final_message = AIMessage(content=final_message_content, name="data_team_final_response")
-    
-    # Create a new state dictionary to avoid modifying the input state directly if it's not desired by LangGraph's implicit state management
-    # However, common practice in LangGraph nodes is to return a dictionary of the keys to update in the state.
-    # To ensure all relevant keys are preserved, especially generated_sql, we should return it explicitly if it exists.
-    
-    # The safest approach is to return a dictionary of all fields that this graph is responsible for.
-    # If the graph is supposed to be the final step for the data team before handing to supervisor,
-    # it should ensure all relevant data (messages, generated_sql, execution_result etc.) are in the returned dict.
-
-    # Let's update the messages in the current state and return all relevant fields.
-    updated_state_dict = state.copy() # Start with a copy of the current state
-    updated_state_dict["messages"] = [final_message] # Update the messages
-    
-    # Ensure fields like generated_sql are explicitly carried over if they exist from previous steps in this graph
-    # This is slightly redundant if state.copy() already does it, but makes the intent clear.
-    # if "generated_sql" in state and state["generated_sql"] is not None:
-    #     updated_state_dict["generated_sql"] = state["generated_sql"]
-    # else:
-    #     updated_state_dict["generated_sql"] = None # Ensure it's None if not set
-
-    # The state object is a TypedDict. We should return a dictionary that matches its keys.
-    # What `run_agent_session` expects are `response_content` and `generated_sql`.
-    # The supervisor gets the full AgentState.
-    # This node is internal to data_team; its return updates data_team's state.
-    # The critical part is that when data_team graph *ends*, the AgentState must contain generated_sql.
-
-    # The original problem: return {"messages": [final_message]} effectively clears other state fields for the supervisor.
-    # LangGraph nodes update the overall state by returning a dictionary of the *changes*.
-    # If we only return {"messages": ...}, other fields like "generated_sql" might be implicitly kept or discarded 
-    # depending on how the parent graph (supervisor) handles state merging. 
-    # It seems like they are being discarded.
-
-    # Correct approach: ensure all fields of AgentState that this team is responsible for are returned or updated.
-    # The most robust fix is to ensure that when this node is the one setting the final message, 
-    # it also ensures generated_sql is part of the returned dictionary if it should be.
-
-    return_dict = {
-        "messages": [final_message],
-        # Explicitly pass through other important state fields that should persist 
-        # from the data_team's operation up to the supervisor.
-        "natural_language_query": state.get("natural_language_query"),
-        "schema": state.get("schema"),
-        "generated_sql": state.get("generated_sql"), # <<< THIS IS THE KEY FIX
-        "validation_status": state.get("validation_status"),
-        "validation_feedback": state.get("validation_feedback"),
-        "execution_result": state.get("execution_result"),
-        "error_message": state.get("error_message"), # If an error occurred, it would be in the message though
-        "sql_generation_retries": state.get("sql_generation_retries"),
-        "provided_schema_text": state.get("provided_schema_text")
-    }
-    # Filter out None values to keep the state clean, unless the key is 'generated_sql' or 'execution_result'
-    # as None is a valid state for them (e.g. no SQL generated, or no execution yet).
-    return {k: v for k, v in return_dict.items() if v is not None or k in ["generated_sql", "execution_result", "provided_schema_text", "validation_feedback", "error_message"]} 
+    return {"messages": [final_message]}
 
 
 # --- Conditional Edges ---

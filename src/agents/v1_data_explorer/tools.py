@@ -8,7 +8,6 @@ import pandas as pd
 import os
 
 # Initialize Tavily Search Tool
-# Ensure TAVILY_API_KEY is set in your environment variables
 tavily_search = TavilySearchResults(max_results=3)
 tavily_search.name = "web_search"
 tavily_search.description = "A search engine useful for answering questions about current events, general knowledge, or recent information."
