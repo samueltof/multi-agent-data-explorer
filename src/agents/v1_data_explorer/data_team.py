@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from src.config.logger import logger
 from .state import AgentState
 from .tools import get_database_schema, execute_sql_query
+from .rag_utils import get_few_shot_examples # Added import
+from langchain_openai import OpenAIEmbeddings # Added import for embedding model
 
 # Constants
 MAX_SQL_RETRIES = 2
@@ -17,8 +19,16 @@ REACT_AGENT_INITIAL_PROMPT = """
 You are a data analyst expert tasked with generating SQLite SQL queries based on user requests OR providing the database schema when asked.
 You have access to a tool to fetch the database schema (`get_database_schema`).
 
+Here are some examples of how to respond to different user queries:
+<few_shot_examples>
+{few_shot_examples}
+</few_shot_examples>
+
 Your goal is to:
-1. Analyze the user's query: {query}
+1. Analyze the user's query: 
+<user_query>    
+{query}
+</user_query>
 2. **If the user is asking for the database schema:** Use the `get_database_schema` tool. Once you receive the schema description from the tool, **respond ONLY with that exact schema description** provided by the tool, without any additional text or SQL.
 3. **If the user is asking a question that requires data from the database:**
     a. Use the `get_database_schema` tool *if* you need it to understand the tables and columns.
@@ -29,7 +39,7 @@ Your goal is to:
 """
 
 # --- Node to prepare input for the data team ---
-def prepare_data_query_node(state: AgentState) -> Dict[str, Any]:
+def prepare_data_query_node(state: AgentState, embed_model: Any) -> Dict[str, Any]:
     """Extracts the latest user query and prepares the initial message for the ReAct agent."""
     logger.info("👨‍💻 DATA TEAM: Preparing query for ReAct agent...")
 
@@ -47,6 +57,29 @@ def prepare_data_query_node(state: AgentState) -> Dict[str, Any]:
 
     logger.info(f"👨‍💻 DATA TEAM: Found user query: '{last_human_message_content}'")
 
+    # Get few-shot examples
+    few_shot_examples_str = ""
+    if embed_model:
+        try:
+            logger.info("👨‍💻 DATA TEAM: Retrieving few-shot examples...")
+            few_shot_examples_str = get_few_shot_examples(
+                user_query=last_human_message_content,
+                embed_model=embed_model
+            )
+            if few_shot_examples_str and few_shot_examples_str.strip():
+                # Count examples based on the specific delimiter used in rag_utils.py
+                example_delimiter = "\n\n---\n\n"
+                num_examples_retrieved = len(few_shot_examples_str.strip().split(example_delimiter))
+                logger.info(f"👨‍💻 DATA TEAM: Successfully retrieved {num_examples_retrieved} few-shot examples.")
+            else:
+                logger.info("👨‍💻 DATA TEAM: No few-shot examples retrieved or an issue occurred.")
+        except Exception as e:
+            logger.warning(f"👨‍💻 DATA TEAM: Failed to get few-shot examples: {e}")
+            few_shot_examples_str = "<!-- Could not retrieve few-shot examples -->" # Placeholder in case of error
+    else:
+        logger.warning("👨‍💻 DATA TEAM: No embedding model provided, skipping few-shot examples.")
+        few_shot_examples_str = "<!-- Few-shot examples skipped (no embedding model) -->"
+
     # Check for retry feedback (only relevant if we are retrying SQL generation)
     retry_feedback = state.get("validation_feedback", "")
     # Only add retry feedback if we are actually in a SQL retry loop, not if the first try was a schema request
@@ -54,10 +87,13 @@ def prepare_data_query_node(state: AgentState) -> Dict[str, Any]:
     is_retrying_sql = state.get("generated_sql") is not None and state.get("validation_status") == "invalid"
     retry_prompt_addition = ""
     if is_retrying_sql and retry_feedback:
-        retry_prompt_addition = f"\nRetry Feedback: You previously generated SQL that failed validation with the following feedback: '{retry_feedback}'. Please analyze this feedback and generate a corrected query."
+        retry_prompt_addition = f"""
+
+Retry Feedback: You previously generated SQL that failed validation with the following feedback: '{retry_feedback}'. Please analyze this feedback and generate a corrected query."""
     
     initial_prompt = REACT_AGENT_INITIAL_PROMPT.format(
         query=last_human_message_content,
+        few_shot_examples=few_shot_examples_str,
         retry_feedback=retry_prompt_addition
     )
 
@@ -422,7 +458,7 @@ def check_for_errors_after_execution(state: AgentState) -> str:
 
 # --- Graph Definition ---
 
-def create_data_team_graph(llm_client: Any):
+def create_data_team_graph(llm_client: Any, embed_model_instance: Optional[Any] = None):
     """Creates and compiles the LangGraph StateGraph for the data team using a prebuilt ReAct agent."""
     workflow = StateGraph(AgentState)
 
@@ -433,8 +469,21 @@ def create_data_team_graph(llm_client: Any):
     # Bind the llm_client to the validation node
     validate_sql_with_llm = partial(sql_validator_node, llm_client=llm_client)
 
+    # Prepare embedding model
+    current_embed_model = embed_model_instance
+    if current_embed_model is None:
+        try:
+            logger.info("👨‍💻 DATA TEAM: No embed_model_instance provided, attempting to instantiate OpenAIEmbeddings.")
+            current_embed_model = OpenAIEmbeddings() # Default to OpenAIEmbeddings
+        except Exception as e:
+            logger.error(f"👨‍💻 DATA TEAM: Failed to instantiate OpenAIEmbeddings: {e}. Few-shot examples will be disabled.")
+            current_embed_model = None # Ensure it's None if instantiation fails
+            
+    # Bind dependencies to prepare_data_query_node
+    prepare_query_with_deps = partial(prepare_data_query_node, embed_model=current_embed_model)
+
     # Add nodes
-    workflow.add_node("prepare_query", prepare_data_query_node)
+    workflow.add_node("prepare_query", prepare_query_with_deps)
     workflow.add_node("sql_generating_agent", sql_generating_agent) # The prebuilt ReAct agent
     workflow.add_node("extract_schema_or_sql", extract_schema_or_sql_node) # New node to extract schema or SQL
     workflow.add_node("validate_sql", validate_sql_with_llm)
@@ -508,5 +557,5 @@ def create_data_team_graph(llm_client: Any):
     # Compile the graph
     data_team_app = workflow.compile()
     data_team_app.name = "data_analysis_team"
-    logger.info("👨‍💻 DATA TEAM: Compiled graph with schema/SQL extraction logic.")
+    logger.info("👨‍💻 DATA TEAM: Compiled graph with schema/SQL extraction logic and RAG few-shot examples.")
     return data_team_app 

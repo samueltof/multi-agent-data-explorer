@@ -1,6 +1,7 @@
 import streamlit as st
 import asyncio
 import sys
+import re # Import re for the formatter
 from pathlib import Path
 
 # Ensure the src directory is in the Python path
@@ -14,6 +15,64 @@ try:
 except ImportError as e:
     st.error(f"Error importing agent components: {e}. Make sure the agent code is accessible.")
     st.stop()
+
+# --- Simple SQL Formatter ---
+def minimal_sql_formatter(sql_string: str) -> str:
+    if not sql_string or not isinstance(sql_string, str):
+        return str(sql_string) # Ensure it's a string if not None or already string
+
+    original_sql = sql_string.strip()
+
+    # If it already has newlines, assume it's somewhat formatted by the agent.
+    if '\n' in original_sql:
+        return original_sql
+
+    # For single-line SQL, add newlines before major keywords
+    formatted_sql = original_sql
+
+    # Keywords that should start a new line
+    newline_keywords = [
+        "FROM", "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN", 
+        "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "JOIN", 
+        "WHERE", "GROUP BY", "ORDER BY", "LIMIT", "HAVING", 
+        "UNION ALL", "UNION", 
+        "VALUES", "SET", "ON"
+    ]
+
+    # Handle SELECT clause indentation first
+    select_prefix = "SELECT"
+    select_prefix_len = len(select_prefix)
+    if formatted_sql.upper().startswith(select_prefix):
+        # Find where the column list ends (heuristic: before FROM)
+        from_keyword_pos = -1
+        match_from = re.search(r"\sFROM\s", formatted_sql, re.IGNORECASE)
+        if match_from:
+            from_keyword_pos = match_from.start()
+        
+        # Extract parts
+        if from_keyword_pos != -1:
+            columns_part_str = formatted_sql[select_prefix_len:from_keyword_pos].strip()
+            rest_of_sql = formatted_sql[from_keyword_pos:] # Includes leading space before FROM
+            
+            columns = [col.strip() for col in columns_part_str.split(',')]
+            if len(columns) > 1:
+                indented_columns = "  " + ",\n  ".join(columns)
+                formatted_sql = f"{select_prefix}\n{indented_columns}{rest_of_sql}"
+            elif columns_part_str: # Single column or complex expression
+                formatted_sql = f"{select_prefix}\n  {columns_part_str}{rest_of_sql}"
+            # If columns_part_str is empty (e.g. SELECT *), it will just be SELECT plus rest_of_sql
+            # The existing logic should handle this by not changing formatted_sql if columns_part_str is empty.
+    
+    # For other keywords, insert a newline before them.
+    # This preserves the original casing of the keyword found.
+    for kw in newline_keywords:
+        pattern = r"(\s)(\b" + re.escape(kw) + r"\b)" # Space, then keyword
+        def replace_with_newline(match_obj):
+            return f"\n{match_obj.group(2)}" # Newline + original keyword
+        formatted_sql = re.sub(pattern, replace_with_newline, formatted_sql, flags=re.IGNORECASE)
+
+    return formatted_sql.strip()
+# --- End of SQL Formatter ---
 
 # Page configuration
 st.set_page_config(page_title="Data Explorer Agent Chat", layout="wide")
@@ -32,7 +91,8 @@ for message in st.session_state.messages:
         # If the message is from the assistant and has SQL, show an expander
         if message["role"] == "assistant" and message.get("sql"):
             with st.expander("View Generated SQL"):
-                st.code(message["sql"], language="sql")
+                formatted_sql_display = minimal_sql_formatter(message["sql"])
+                st.code(formatted_sql_display, language="sql")
 
 # Handle new user input
 if prompt := st.chat_input("Ask the agent..."):
@@ -65,7 +125,8 @@ if prompt := st.chat_input("Ask the agent..."):
             # If SQL was generated, show the expander immediately for the latest response
             if generated_sql:
                 with st.expander("View Generated SQL", expanded=False): # Can set expanded=True if you want it open by default
-                    st.code(generated_sql, language="sql")
+                    formatted_sql_display = minimal_sql_formatter(generated_sql)
+                    st.code(formatted_sql_display, language="sql")
 
     # Add assistant message to chat history, including SQL if any
     st.session_state.messages.append({
