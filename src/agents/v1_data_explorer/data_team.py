@@ -35,6 +35,15 @@ Your goal is to:
     b. Once you have the necessary information (schema, if required), generate the appropriate SQLite SQL query.
     c. Respond ONLY with the final SQL query itself, without any introductory text, explanations, or markdown formatting like ```sql.
 
+Query guidelines:
+- Do not under any circumstance use SELECT * in your query.
+- Use the relevant columns in the SELECT statement
+- Use appropriate JOIN conditions
+- Include WHERE clauses to filter relevant data
+- Order results meaningfully when appropriate
+- Handle NULL values appropriately (SKIP ALL ROWS WHERE ANY COLUMN IS NULL or "N/A" or "")
+- Use UNION ALL when using multiple datasets
+
 {retry_feedback}
 """
 

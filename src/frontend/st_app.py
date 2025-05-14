@@ -80,6 +80,25 @@ st.set_page_config(page_title="Data Explorer Agent Chat", layout="wide")
 st.title("💬 Data Explorer Agent")
 st.caption("🚀 Interact with the AI agent to explore your data.")
 
+# --- Starter Questions Sidebar ---
+st.sidebar.title("💡 Starter Questions")
+st.sidebar.markdown("Click a question to ask the agent:")
+
+starter_questions = [
+    "How many TCR complexes are in the database?",
+    "How many alpha versus beta chains do we have in total?",
+    "Which epitopes are represented, and how many complexes recognize each?",
+    "Which V-gene segments are most frequently used overall in the dataset?"
+]
+
+if "submitted_starter_query" not in st.session_state:
+    st.session_state.submitted_starter_query = None
+
+for i, question in enumerate(starter_questions):
+    if st.sidebar.button(question, key=f"starter_{i}"):
+        st.session_state.submitted_starter_query = question
+        st.rerun() # Rerun to process the selected query
+
 # Initialize chat history in session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -94,19 +113,29 @@ for message in st.session_state.messages:
                 formatted_sql_display = minimal_sql_formatter(message["sql"])
                 st.code(formatted_sql_display, language="sql")
 
-# Handle new user input
-if prompt := st.chat_input("Ask the agent..."):
+# Determine the prompt: either from chat_input or a submitted starter query
+user_prompt = None
+chat_input_prompt = st.chat_input("Ask the agent...")
+
+if st.session_state.submitted_starter_query:
+    user_prompt = st.session_state.submitted_starter_query
+    st.session_state.submitted_starter_query = None # Clear after use
+elif chat_input_prompt:
+    user_prompt = chat_input_prompt
+
+# Handle new user input (either from chat_input or starter question)
+if user_prompt:
     # Add user message to chat history and display it
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.session_state.messages.append({"role": "user", "content": user_prompt})
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.markdown(user_prompt)
 
     # Process with the agent
     with st.chat_message("assistant"):
         with st.spinner("🕵️‍♂️ Agent is thinking..."):
             try:
                 # Run the synchronous function that internally handles asyncio
-                agent_response_data = asyncio.run(run_agent_session(prompt))
+                agent_response_data = asyncio.run(run_agent_session(user_prompt))
                 
                 agent_response = agent_response_data.get("response_content", "Error: No response content found.")
                 generated_sql = agent_response_data.get("generated_sql")
