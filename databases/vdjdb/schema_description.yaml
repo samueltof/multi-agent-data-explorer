@@ -1,0 +1,105 @@
+schema:
+  tables:
+    complexes:
+      description: >
+        Stores one row per T-cell receptor complex (paired α+β chain clone) 
+        with shared metadata about MHC alleles, epitope target, assay details, and meta information.
+      columns:
+        - name: complex_id
+          type: integer
+          description: Unique identifier for each TCR complex
+          constraints: primary key
+        - name: mhc_a
+          type: text
+          description: First MHC chain allele (e.g. HLA-A*02:01)
+          constraints: not null
+        - name: mhc_b
+          type: text
+          description: Second MHC chain allele (e.g. B2M for MHCI β2-microglobulin)
+          constraints: not null
+        - name: mhc_class
+          type: text
+          description: MHC class (e.g. MHCI or MHCII)
+          constraints: not null
+        - name: antigen_epitope
+          type: text
+          description: Amino acid sequence of the presented epitope
+          constraints: not null
+        - name: antigen_gene
+          type: text
+          description: Representative parent gene of the epitope
+          constraints: not null
+        - name: antigen_species
+          type: text
+          description: Representative parent species of the epitope
+          constraints: not null
+        - name: reference_id
+          type: text
+          description: PubMed ID, URL, or submitter details for the specificity assay
+          constraints: not null
+        - name: method
+          type: json
+          description: JSON blob describing assay method (e.g. tetramer-sort, sequencing type)
+          constraints: not null
+        - name: meta
+          type: json
+          description: JSON blob of additional metadata (cell subset, donor info, etc.)
+          constraints: not null
+
+    chains:
+      description: >
+        Stores one row per individual TCR chain (α or β) linked to its parent complex,
+        including sequence, V/J calls, fix annotations, internal flags, and confidence score.
+      columns:
+        - name: chain_id
+          type: integer
+          description: Auto-incrementing identifier for each chain record
+          constraints: primary key
+        - name: complex_id
+          type: integer
+          description: Foreign key linking to complexes(complex_id)
+          constraints: not null, foreign key references complexes(complex_id)
+        - name: gene
+          type: text
+          description: TCR chain type (“TRA” or “TRB”)
+          constraints: not null
+        - name: cdr3
+          type: text
+          description: CDR3 amino acid sequence
+          constraints: not null
+        - name: v_segm
+          type: text
+          description: V-segment allele (e.g. TRBV19*01)
+          constraints: not null
+        - name: j_segm
+          type: text
+          description: J-segment allele (e.g. TRBJ2-1*01)
+          constraints: not null
+        - name: species
+          type: text
+          description: Parent species of the TCR chain
+          constraints: not null
+        - name: cdr3fix
+          type: json
+          description: JSON blob with details of any CDR3 sequence fixes
+          constraints: not null
+        - name: web_method
+          type: text
+          description: Internal flag for web.method
+          constraints: not null
+        - name: web_method_seq
+          type: text
+          description: Internal flag for web.method.seq
+          constraints: not null
+        - name: web_cdr3fix_nc
+          type: text
+          description: Internal flag for web.cdr3fix.nc
+          constraints: not null
+        - name: web_cdr3fix_unmp
+          type: text
+          description: Internal flag for web.cdr3fix.unmp
+          constraints: not null
+        - name: vdjdb_score
+          type: integer
+          description: VDJdb confidence score (rarity indicator; lower = rarer)
+          constraints: not null

@@ -17,3 +17,5 @@ langchain_anthropic
 langchain_experimental
 pyodbc
 tabulate
+langgraph-supervisor
+streamlit
